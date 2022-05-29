@@ -1,57 +1,18 @@
-use std::thread;
 use std::env;
-use std::fmt;
 use std::{fs, io};
 use std::mem::size_of;
 use std::collections::HashMap;
-use std::io::Write;
 use std::time::Duration;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 
-use chrono::Datelike;
-use chrono::Timelike;
+mod types;
+use crate::types::Command;
+use crate::types::Timer;
+use crate::types::TimerType;
 
-/// Enum for type of timer
-#[derive(PartialEq)]
-enum TimerType {
-    Every,
-}
-
-impl fmt::Display for TimerType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let printable = match *self {
-            TimerType::Every => "every",
-        };
-        write!(f, "{}", printable)
-    }
-}
-
-/// Struct for commands
-#[derive(Clone)]
-struct Command {
-    bin: String,
-    args: Vec<String>,
-}
-
-/// Timer struct
-struct Timer {
-    name: String,
-    kind: TimerType,
-    interval: Duration,
-    command: Command,
-}
-
-impl Timer {
-    fn new(name: String, kind: TimerType, interval: Duration, command: Command) -> Timer {
-        return Timer {
-            name: name,
-            kind: kind,
-            interval: interval,
-            command : command,
-        }
-    }
-}
+mod files;
+mod process;
 
 fn main() {
     /*-------------------------------------------------------------------------------------------*/
@@ -89,16 +50,16 @@ fn main() {
     /* Root directory is that which is passed as 'timer_location' in the config file. From this  */
     /* point file system should look:                                                            */
     /* root                                                                                      */
-    /* --> all_timers                                                                            */
-    /* --> active_timers                                                                         */
-    /* --> logs                                                                                  */
+    /* |-> all_timers                                                                            */
+    /* |-> active_timers                                                                         */
+    /* '-> logs                                                                                  */
     /*                                                                                           */
     /* If any of them does not exist, program will try to create them. If creation is failed then*/
     /* program make an exit.                                                                     */
     /*-------------------------------------------------------------------------------------------*/
     match config.get("timer_location") {
         Some(v) => {
-            if let Err(e) = check_and_build_dirs(v) {
+            if let Err(e) = files::check_and_build_dirs(v) {
                 println!("Error occured during '{}' directory creation!", e);
                 return;
             }
@@ -237,7 +198,7 @@ fn main() {
     for timer in &timers {
         let temp_tx = tx.clone();
         if timer.kind == TimerType::Every {
-            match set_every_timer(timer.name.clone(), timer.interval.clone(), temp_tx) {
+            match process::set_every_timer(timer.name.clone(), timer.interval.clone(), temp_tx) {
                 Ok(s) => println!("{}", s),
                 Err(s) => {
                     println!("{}", s);
@@ -253,118 +214,11 @@ fn main() {
                 for timer in &timers {
                     if timer.name == s {
                         println!("Timer ({}) has expired, execute command: {}", s, timer.command.bin);
-                        let _ = exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
+                        let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
                     }
                 }
             },
             Err(_) => println!("Error during receive"),
         }
     }
-}
-
-/// Verify that directory structure exists
-/// 
-/// This program check that file sturcture exist which is requires for the program.
-/// If some directory does not exist, it will try to create it.
-/// 
-/// # Return values
-/// 
-/// Return with `Result<(), String>. In case of Err, the parameter is the name of directory which had problem.
-fn check_and_build_dirs(root: &str) -> Result<(), String> {
-    if let Err(_) = create_dir_if_not_exist(root) {
-        return Err(String::from(root));
-    }
-
-    if let Err(_) = create_dir_if_not_exist(format!("{}/all_timers", root).as_str()) {
-        return Err(format!("{}/all_timers", root));
-    }
-
-    if let Err(_) = create_dir_if_not_exist(format!("{}/active_timers", root).as_str()) {
-        return Err(format!("{}/active_timers", root));
-    }
-
-    if let Err(_) = create_dir_if_not_exist(format!("{}/logs", root).as_str()) {
-        return Err(format!("{}/log", root));
-    }
-
-    return Ok(());
-}
-
-/// If specified directory does not exist, then try to create it.
-fn create_dir_if_not_exist(path: &str) -> Result<(), ()> {
-    if !std::path::Path::new(path).is_dir() {
-        if let Err(_) = std::fs::create_dir_all(path) {
-            return Err(());
-        }
-    }
-    return Ok(());
-}
-
-/// Execute command
-/// 
-/// This function executed the specified program on a different thread.
-/// If command program is not specified, it returns with Err.
-/// 
-/// # Return
-/// 
-/// Return with `Result<(), String>`.
-fn exec_command(command: Command, id: String, root_dir: String) -> Result<(), String> {
-    if command.bin.is_empty() {
-        return Err(String::from("Command is not defined"));
-    }
-
-    std::thread::spawn(move || {
-        let cmd = std::process::Command::new(command.bin).args(command.args).output().expect("failed to execute process");
-
-        let log_file = format!("{}/logs/{}.log", root_dir, id);
-
-        let output: String = match String::from_utf8(cmd.stdout) {
-            Ok(r) => r,
-            Err(_) => String::from(""),
-        };
-
-        let mut file =  match std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .append(true)
-            .open(log_file) {
-            Ok(r) => r,
-            Err(e) => {
-                println!("Error during try write timer log file: {:?}", e);
-                return;
-            }
-        };
-
-        let now = chrono::Local::now();
-        let now = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-        writeln!(&mut file, "{} {} Command has run, {}", now, id, cmd.status).unwrap();
-
-        if !output.is_empty() {
-            let lines = output.lines();
-            for line in lines {
-                let now = chrono::Local::now();
-                let now = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-                writeln!(&mut file, "{} {} Command output -> {}", now, id, line).unwrap();
-            }
-        }
-    });
-
-    return Ok(());
-}
-
-/// Create timer with every type
-/// 
-/// This function creates a new thread. This thread will sleep for the specified interval and after it,
-/// it sends back a signal to main program that timer has expired.
-fn set_every_timer(name: String, interval: Duration, sender: Sender<String>) -> Result<String, String> {
-    let tname = name.clone();
-    std::thread::spawn(move || {
-        loop {
-            thread::sleep(interval);
-            let tname = name.clone();
-            let _ = sender.send(tname);
-        }
-    });
-
-    return Ok(format!("Timer ({}) is defined!", tname));
 }
