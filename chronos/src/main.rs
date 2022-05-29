@@ -1,5 +1,6 @@
 use std::thread;
 use std::env;
+use std::fmt;
 use std::{fs, io};
 use std::mem::size_of;
 use std::collections::HashMap;
@@ -11,17 +12,29 @@ use std::sync::mpsc::{Sender, Receiver};
 use chrono::Datelike;
 use chrono::Timelike;
 
+/// Enum for type of timer
 #[derive(PartialEq)]
 enum TimerType {
     Every,
 }
 
+impl fmt::Display for TimerType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let printable = match *self {
+            TimerType::Every => "every",
+        };
+        write!(f, "{}", printable)
+    }
+}
+
+/// Struct for commands
 #[derive(Clone)]
 struct Command {
     bin: String,
     args: Vec<String>,
 }
 
+/// Timer struct
 struct Timer {
     name: String,
     kind: TimerType,
