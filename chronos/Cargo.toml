@@ -6,3 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4"
+onlyati_config = { git = "https://gitlab.atihome.lan/rust-libs/onlyati-config", tag = "latest" }
