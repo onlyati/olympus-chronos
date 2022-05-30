@@ -22,15 +22,7 @@ pub fn exec_command(command: Command, id: String, root_dir: String) -> Result<()
     }
 
     std::thread::spawn(move || {
-        let cmd = std::process::Command::new(command.bin).args(command.args).output().expect("failed to execute process");
-
         let log_file = format!("{}/logs/{}.log", root_dir, id);
-
-        let output: String = match String::from_utf8(cmd.stdout) {
-            Ok(r) => r,
-            Err(_) => String::from(""),
-        };
-
         let mut file =  match std::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -45,6 +37,16 @@ pub fn exec_command(command: Command, id: String, root_dir: String) -> Result<()
 
         let now = chrono::Local::now();
         let now = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+        writeln!(&mut file, "{} {} Timer has expired", now, id).unwrap();
+
+        let cmd = std::process::Command::new(command.bin).args(command.args).output().expect("failed to execute process");
+        let output: String = match String::from_utf8(cmd.stdout) {
+            Ok(r) => r,
+            Err(_) => String::from(""),
+        };
+
+        let now = chrono::Local::now();
+        let now = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());        
         writeln!(&mut file, "{} {} Command has run, {}", now, id, cmd.status).unwrap();
 
         if !output.is_empty() {

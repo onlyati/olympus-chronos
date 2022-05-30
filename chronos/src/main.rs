@@ -1,6 +1,8 @@
 use std::env;
 use std::{fs, io};
 use std::mem::size_of;
+use std::net::TcpStream;
+use std::io::{Read, Write};
 use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc;
@@ -29,14 +31,13 @@ fn main() {
         return;
     }
 
-    let config: HashMap<String, String>;
-    match onlyati_config::read_config(args[1].as_str()) {
-        Ok(r) => config = r,
+    let config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
+        Ok(r) => r,
         Err(e) => {
             println!("Error during config reading: {}", e);
             return;
         }
-    }
+    };
 
     println!("Configuration:");
     for (setting, value) in &config {
@@ -186,6 +187,32 @@ fn main() {
     }
 
     /*-------------------------------------------------------------------------------------------*/
+    /* Upload timers onto Hermes                                                                 */
+    /* =========================                                                                 */
+    /*                                                                                           */
+    /* If hermes is available upload the timers onto that on the specified port and address at   */
+    /* 'hermes_address' property.                                                                */
+    /*-------------------------------------------------------------------------------------------*/
+    match config.get("hermes_address") {
+        Some(v) => {
+            println!("Update Hermes with timer data");
+
+            let status = hermes_del_group(v, "timer");
+            println!("{:?}", status);
+
+            let status = hermes_add_group(v, "timer");
+            println!("{:?}", status);
+
+            for timer in &timers {
+                let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
+                let status = hermes_add_timer(v, timer.name.as_str(), info.as_str());
+                println!("{:?}", status);
+            }
+        },
+        None => println!("Hermes location is not specified. Updates will not be send there!"),
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
     /* Start timers                                                                              */
     /* ============                                                                              */
     /*                                                                                           */
@@ -213,12 +240,59 @@ fn main() {
             Ok(s) => {
                 for timer in &timers {
                     if timer.name == s {
-                        println!("Timer ({}) has expired, execute command: {}", s, timer.command.bin);
                         let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
                     }
                 }
             },
             Err(_) => println!("Error during receive"),
         }
+    }
+}
+
+fn hermes_del_group(address: &str, name: &str) -> Result<String, String> {
+    match TcpStream::connect(address) {
+        Ok(mut stream) => {
+            let msg = format!("DELETE /group?name={} HTTP/1.1\r\nAccept: */*\r\nContent-Length: 0\r\n", name);
+            stream.write(msg.as_bytes()).unwrap();
+            let mut buffer = [0; 1024];
+
+            match stream.read(&mut buffer) {
+                Ok(r) => return Ok(String::from_utf8_lossy(&buffer[0..r]).trim().to_string()),
+                Err(e) => return Err(format!("Error: {:?}", e)),
+            }
+        },
+        Err(e) => return Err(format!("Failed to connect to Hermes: {}", e)),
+    }
+}
+
+fn hermes_add_group(address: &str, name: &str) -> Result<String, String> {
+    match TcpStream::connect(address) {
+        Ok(mut stream) => {
+            let msg = format!("POST /group?name={} HTTP/1.1\r\nAccept: */*\r\nContent-Length: 0\r\n", name);
+            stream.write(msg.as_bytes()).unwrap();
+            let mut buffer = [0; 1024];
+
+            match stream.read(&mut buffer) {
+                Ok(r) => return Ok(String::from_utf8_lossy(&buffer[0..r]).trim().to_string()),
+                Err(e) => return Err(format!("Error: {:?}", e)),
+            }
+        },
+        Err(e) => return Err(format!("Failed to connect to Hermes: {}", e)),
+    }
+}
+
+fn hermes_add_timer(address: &str, name: &str, content: &str) -> Result<String, String> {
+    match TcpStream::connect(address) {
+        Ok(mut stream) => {
+            let msg = format!("POST /item?name={}&group=timer HTTP/1.1\r\nAccept: */*\r\nContent-Length: {}\r\n\r\n{}\r\n", name, content.len(), content);
+            stream.write(msg.as_bytes()).unwrap();
+            let mut buffer = [0; 1024];
+
+            match stream.read(&mut buffer) {
+                Ok(r) => return Ok(String::from_utf8_lossy(&buffer[0..r]).trim().to_string()),
+                Err(e) => return Err(format!("Error: {:?}", e)),
+            }
+        },
+        Err(e) => return Err(format!("Failed to connect to Hermes: {}", e)),
     }
 }
