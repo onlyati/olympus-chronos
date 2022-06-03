@@ -8,6 +8,8 @@ use std::time::Duration;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 
+use chrono::Timelike;
+
 mod types;
 use crate::types::Command;
 use crate::types::Timer;
@@ -183,7 +185,13 @@ fn main() {
             },
         };
 
-        timers.push(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command));
+        let v = chrono::Local::now();
+        let v = v.num_seconds_from_midnight();
+        let v: u64 = v.into();
+
+        let timer_next_hit = v + timer_interval.as_secs();
+
+        timers.push(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit));
     }
 
     /*-------------------------------------------------------------------------------------------*/
@@ -220,27 +228,27 @@ fn main() {
     /* which are sleeping until interval has expired. After interval has expired, it sends a sig-*/
     /* nal via Channel and main program starts the command belongs to timer on another thread.   */
     /*-------------------------------------------------------------------------------------------*/
-    let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+    let (tx, rx): (Sender<u64>, Receiver<u64>) = mpsc::channel();
 
-    for timer in &timers {
-        let temp_tx = tx.clone();
-        if timer.kind == TimerType::Every {
-            match process::set_every_timer(timer.name.clone(), timer.interval.clone(), temp_tx) {
-                Ok(s) => println!("{}", s),
-                Err(s) => {
-                    println!("{}", s);
-                    return;
-                },
-            }
-        }
+    match process::set_every_timer(tx) {
+        Ok(_) => println!("Timer thread started..."),
+        Err(s) => {
+            println!("{}", s);
+            return;
+        },
     }
 
     loop {
         match rx.recv() {
             Ok(s) => {
-                for timer in &timers {
-                    if timer.name == s {
+                for timer in &mut timers {
+                    if timer.next_hit == s {
+                        println!("{} has expired", timer.name);
                         let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
+                        timer.next_hit = s + timer.interval.as_secs();
+                        if timer.next_hit >= 86400 {
+                            timer.next_hit = timer.next_hit - 86400;
+                        }
                     }
                 }
             },

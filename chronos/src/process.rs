@@ -66,15 +66,17 @@ pub fn exec_command(command: Command, id: String, root_dir: String) -> Result<()
 /// 
 /// This function creates a new thread. This thread will sleep for the specified interval and after it,
 /// it sends back a signal to main program that timer has expired.
-pub fn set_every_timer(name: String, interval: Duration, sender: Sender<String>) -> Result<String, String> {
-    let tname = name.clone();
+pub fn set_every_timer(sender: Sender<u64>) -> Result<(), String> {
+    let interval = Duration::from_secs(1);
     std::thread::spawn(move || {
         loop {
             thread::sleep(interval);
-            let tname = name.clone();
-            let _ = sender.send(tname);
+            let v = chrono::Local::now();
+            let v = v.num_seconds_from_midnight();
+            let v: u64 = v.into();
+            let _ = sender.send(v);
         }
     });
 
-    return Ok(format!("Timer ({}) is defined!", tname));
+    return Ok(());
 }
