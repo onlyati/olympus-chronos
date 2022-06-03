@@ -157,33 +157,34 @@ fn main() {
         };
 
         // Get command
-        let timer_command: Command = match timer_info.get("command") {
+        let timer_command: Vec<String> = match timer_info.get("command") {
             Some(v) => {
-                let args = v.split_whitespace().collect::<Vec<&str>>();
-                if args.len() > 1 {
-                    let mut real_args: Vec<String> = Vec::with_capacity(args.len() * size_of::<String>());
-
-                    for i in 1..args.len()  {
-                        real_args.push(String::from(args[i]));
-                    }
-
-                    Command {
-                        bin: String::from(args[0]),
-                        args: real_args,
-                    }
+                let temp = v.split_whitespace().collect::<Vec<&str>>();
+                let mut args: Vec<String> = Vec::new();
+                for cmd in temp {
+                    args.push(String::from(cmd));
                 }
-                else {
-                    Command {
-                        bin: String::from(args[0]),
-                        args: Vec::new(),
-                    }
-                }
+
+                args
             },
             None => {
                 println!("Missing command for {}", file_path);
                 continue;
             },
         };
+
+        // Get user
+        let timer_user = match timer_info.get("user") {
+            Some(v) => {
+                v.to_string()
+            },
+            None => {
+                println!("Missing user for {}", file_path);
+                continue;
+            }
+        };
+
+        let timer_command: Command = Command::new(timer_command, timer_user);
 
         let v = chrono::Local::now();
         let v = v.num_seconds_from_midnight();
@@ -257,6 +258,7 @@ fn main() {
     }
 }
 
+/// Delete group from Hermes
 fn hermes_del_group(address: &str, name: &str) -> Result<String, String> {
     match TcpStream::connect(address) {
         Ok(mut stream) => {
@@ -273,6 +275,7 @@ fn hermes_del_group(address: &str, name: &str) -> Result<String, String> {
     }
 }
 
+/// Add group to Hermes
 fn hermes_add_group(address: &str, name: &str) -> Result<String, String> {
     match TcpStream::connect(address) {
         Ok(mut stream) => {
@@ -289,6 +292,7 @@ fn hermes_add_group(address: &str, name: &str) -> Result<String, String> {
     }
 }
 
+/// Add timer onto timer group in Hermes
 fn hermes_add_timer(address: &str, name: &str, content: &str) -> Result<String, String> {
     match TcpStream::connect(address) {
         Ok(mut stream) => {

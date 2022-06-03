@@ -22,6 +22,24 @@ impl fmt::Display for TimerType {
 pub struct Command {
     pub bin: String,
     pub args: Vec<String>,
+    pub user: String,
+}
+
+impl Command {
+    pub fn new(cmd: Vec<String>, user: String) -> Command {
+        let mut cmd_vec: Vec<String> = Vec::with_capacity((cmd.len() + 2) * std::mem::size_of::<String>());
+        cmd_vec.push(String::from("-u"));
+        cmd_vec.push(user.clone());
+        for parm in cmd {
+            cmd_vec.push(parm);
+        }
+
+        Command {
+            bin: String::from("/usr/bin/sudo"),
+            user: user,
+            args: cmd_vec,
+        }
+    }
 }
 
 /// Timer struct
