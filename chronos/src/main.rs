@@ -7,13 +7,17 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
+use std::sync::Mutex;
 
 use chrono::Timelike;
+use once_cell::sync::OnceCell;
 
 mod types;
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
+
+static TIMERS_GLOB: OnceCell<Mutex<Vec<Timer>>> = OnceCell::new();
 
 mod files;
 mod process;
@@ -44,6 +48,13 @@ fn main() {
     println!("Configuration:");
     for (setting, value) in &config {
         println!("{} -> {}", setting, value);
+    }
+
+    let timer_dummy: Vec<Timer> = Vec::new();
+    let timer_mut = TIMERS_GLOB.set(Mutex::new(timer_dummy));
+    if let Err(_) = timer_mut {
+        println!("Error during mutex data bind!");
+        return;
     }
 
     /*-------------------------------------------------------------------------------------------*/
@@ -195,6 +206,23 @@ fn main() {
         timers.push(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit));
     }
 
+    let timer_mut = TIMERS_GLOB.get();
+    match timer_mut {
+        Some(_) => {
+            {
+                let mut timer_list = timer_mut.unwrap().lock().unwrap();
+                for timer in timers {
+                    timer_list.push(timer);
+                }
+            }
+        },
+        None => {
+            println!("Failed to get timer list!");
+            return;
+        }
+    }
+
+
     /*-------------------------------------------------------------------------------------------*/
     /* Upload timers onto Hermes                                                                 */
     /* =========================                                                                 */
@@ -212,10 +240,20 @@ fn main() {
             let status = hermes_add_group(v, "timer");
             println!("{:?}", status);
 
-            for timer in &timers {
-                let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
-                let status = hermes_add_timer(v, timer.name.as_str(), info.as_str());
-                println!("{:?}", status);
+            let timer_mut = TIMERS_GLOB.get();
+            match timer_mut {
+                Some(_) => {
+                    let timers = timer_mut.unwrap().lock().unwrap();
+                    for timer in timers.iter() {
+                        let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
+                        let status = hermes_add_timer(v, timer.name.as_str(), info.as_str());
+                        println!("{:?}", status);
+                    }
+                },
+                None => {
+                    println!("Failed toget timer list, cannot upload to Hermes!");
+                    return;
+                }
             }
         },
         None => println!("Hermes location is not specified. Updates will not be send there!"),
@@ -242,15 +280,22 @@ fn main() {
     loop {
         match rx.recv() {
             Ok(s) => {
-                for timer in &mut timers {
-                    if timer.next_hit == s {
-                        println!("{} has expired", timer.name);
-                        let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
-                        timer.next_hit = s + timer.interval.as_secs();
-                        if timer.next_hit >= 86400 {
-                            timer.next_hit = timer.next_hit - 86400;
+                let timer_mut = TIMERS_GLOB.get();
+                match timer_mut {
+                    Some(_) => {
+                        let mut timers = timer_mut.unwrap().lock().unwrap();
+                        for timer in timers.iter_mut() {
+                            if timer.next_hit == s {
+                                println!("{} has expired", timer.name);
+                                let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
+                                timer.next_hit = s + timer.interval.as_secs();
+                                if timer.next_hit >= 86400 {
+                                    timer.next_hit = timer.next_hit - 86400;
+                                }
+                            }
                         }
-                    }
+                    },
+                    None => println!("Failed to retreive timers list"),
                 }
             },
             Err(_) => println!("Error during receive"),

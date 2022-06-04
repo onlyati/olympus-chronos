@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 chrono = "0.4"
 onlyati_config = { git = "https://gitlab.atihome.lan/rust-libs/onlyati-config", tag = "latest" }
+once_cell = "*"
