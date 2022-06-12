@@ -98,10 +98,12 @@ fn main() {
         Some(v) => {
             println!("Update Hermes with timer data");
 
-            let status = hermes_del_group(v, "timer");
+            std::env::set_var("CHRONOS_HERMES_ADDR", v);
+
+            let status = hermes_del_group("timer");
             println!("{:?}", status);
 
-            let status = hermes_add_group(v, "timer");
+            let status = hermes_add_group("timer");
             println!("{:?}", status);
 
             let timer_mut = TIMERS_GLOB.get();
@@ -110,7 +112,7 @@ fn main() {
                     let timers = timer_mut.unwrap().lock().unwrap();
                     for timer in timers.iter() {
                         let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
-                        let status = hermes_add_timer(v, timer.name.as_str(), info.as_str());
+                        let status = hermes_add_timer(timer.name.as_str(), info.as_str());
                         println!("{:?}", status);
                     }
                 },
@@ -168,7 +170,12 @@ fn main() {
 }
 
 /// Delete group from Hermes
-fn hermes_del_group(address: &str, name: &str) -> Result<String, String> {
+fn hermes_del_group(name: &str) -> Result<String, String> {
+    let address = match std::env::var("CHRONOS_HERMES_ADDR") {
+        Ok(addr) => addr,
+        Err(_) => return Err(String::from("Hermes is not enabled")),
+    };
+
     match TcpStream::connect(address) {
         Ok(mut stream) => {
             let msg = format!("DELETE /group?name={} HTTP/1.1\r\nAccept: */*\r\nContent-Length: 0\r\n", name);
@@ -185,7 +192,12 @@ fn hermes_del_group(address: &str, name: &str) -> Result<String, String> {
 }
 
 /// Add group to Hermes
-fn hermes_add_group(address: &str, name: &str) -> Result<String, String> {
+fn hermes_add_group(name: &str) -> Result<String, String> {
+    let address = match std::env::var("CHRONOS_HERMES_ADDR") {
+        Ok(addr) => addr,
+        Err(_) => return Err(String::from("Hermes is not enabled")),
+    };
+    
     match TcpStream::connect(address) {
         Ok(mut stream) => {
             let msg = format!("POST /group?name={} HTTP/1.1\r\nAccept: */*\r\nContent-Length: 0\r\n", name);
@@ -202,7 +214,12 @@ fn hermes_add_group(address: &str, name: &str) -> Result<String, String> {
 }
 
 /// Add timer onto timer group in Hermes
-fn hermes_add_timer(address: &str, name: &str, content: &str) -> Result<String, String> {
+fn hermes_add_timer(name: &str, content: &str) -> Result<String, String> {
+    let address = match std::env::var("CHRONOS_HERMES_ADDR") {
+        Ok(addr) => addr,
+        Err(_) => return Err(String::from("Hermes is not enabled")),
+    };
+    
     match TcpStream::connect(address) {
         Ok(mut stream) => {
             let msg = format!("POST /item?name={}&group=timer HTTP/1.1\r\nAccept: */*\r\nContent-Length: {}\r\n\r\n{}\r\n", name, content.len(), content);
