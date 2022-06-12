@@ -1,6 +1,4 @@
 use std::env;
-use std::net::TcpStream;
-use std::io::{Read, Write};
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
@@ -15,6 +13,7 @@ static TIMERS_GLOB: OnceCell<Mutex<Vec<Timer>>> = OnceCell::new();
 
 mod files;
 mod process;
+mod hermes;
 
 fn main() {
     /*-------------------------------------------------------------------------------------------*/
@@ -100,10 +99,10 @@ fn main() {
 
             std::env::set_var("CHRONOS_HERMES_ADDR", v);
 
-            let status = hermes_del_group("timer");
+            let status = hermes::hermes_del_group("timer");
             println!("{:?}", status);
 
-            let status = hermes_add_group("timer");
+            let status = hermes::hermes_add_group("timer");
             println!("{:?}", status);
 
             let timer_mut = TIMERS_GLOB.get();
@@ -112,7 +111,7 @@ fn main() {
                     let timers = timer_mut.unwrap().lock().unwrap();
                     for timer in timers.iter() {
                         let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
-                        let status = hermes_add_timer(timer.name.as_str(), info.as_str());
+                        let status = hermes::hermes_add_timer(timer.name.as_str(), info.as_str());
                         println!("{:?}", status);
                     }
                 },
@@ -169,68 +168,3 @@ fn main() {
     }
 }
 
-/// Delete group from Hermes
-fn hermes_del_group(name: &str) -> Result<String, String> {
-    let address = match std::env::var("CHRONOS_HERMES_ADDR") {
-        Ok(addr) => addr,
-        Err(_) => return Err(String::from("Hermes is not enabled")),
-    };
-
-    match TcpStream::connect(address) {
-        Ok(mut stream) => {
-            let msg = format!("DELETE /group?name={} HTTP/1.1\r\nAccept: */*\r\nContent-Length: 0\r\n", name);
-            stream.write(msg.as_bytes()).unwrap();
-            let mut buffer = [0; 1024];
-
-            match stream.read(&mut buffer) {
-                Ok(r) => return Ok(String::from_utf8_lossy(&buffer[0..r]).trim().to_string()),
-                Err(e) => return Err(format!("Error: {:?}", e)),
-            }
-        },
-        Err(e) => return Err(format!("Failed to connect to Hermes: {}", e)),
-    }
-}
-
-/// Add group to Hermes
-fn hermes_add_group(name: &str) -> Result<String, String> {
-    let address = match std::env::var("CHRONOS_HERMES_ADDR") {
-        Ok(addr) => addr,
-        Err(_) => return Err(String::from("Hermes is not enabled")),
-    };
-    
-    match TcpStream::connect(address) {
-        Ok(mut stream) => {
-            let msg = format!("POST /group?name={} HTTP/1.1\r\nAccept: */*\r\nContent-Length: 0\r\n", name);
-            stream.write(msg.as_bytes()).unwrap();
-            let mut buffer = [0; 1024];
-
-            match stream.read(&mut buffer) {
-                Ok(r) => return Ok(String::from_utf8_lossy(&buffer[0..r]).trim().to_string()),
-                Err(e) => return Err(format!("Error: {:?}", e)),
-            }
-        },
-        Err(e) => return Err(format!("Failed to connect to Hermes: {}", e)),
-    }
-}
-
-/// Add timer onto timer group in Hermes
-fn hermes_add_timer(name: &str, content: &str) -> Result<String, String> {
-    let address = match std::env::var("CHRONOS_HERMES_ADDR") {
-        Ok(addr) => addr,
-        Err(_) => return Err(String::from("Hermes is not enabled")),
-    };
-    
-    match TcpStream::connect(address) {
-        Ok(mut stream) => {
-            let msg = format!("POST /item?name={}&group=timer HTTP/1.1\r\nAccept: */*\r\nContent-Length: {}\r\n\r\n{}\r\n", name, content.len(), content);
-            stream.write(msg.as_bytes()).unwrap();
-            let mut buffer = [0; 1024];
-
-            match stream.read(&mut buffer) {
-                Ok(r) => return Ok(String::from_utf8_lossy(&buffer[0..r]).trim().to_string()),
-                Err(e) => return Err(format!("Error: {:?}", e)),
-            }
-        },
-        Err(e) => return Err(format!("Failed to connect to Hermes: {}", e)),
-    }
-}
