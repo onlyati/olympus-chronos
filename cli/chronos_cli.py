@@ -18,7 +18,7 @@ if getpass.getuser() != "root":
 if len(sys.argv) < 3:
     print("Not enough input parameter")
     print("Formats:")
-    print(sys.argv[0], "list timer-set")
+    print(sys.argv[0], "list timer-sets")
     print(sys.argv[0], "list all timers")
     print(sys.argv[0], "list active timers")
     print(sys.argv[0], "show <timer-name> file")
