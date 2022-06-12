@@ -3,7 +3,7 @@ use std::fmt;
 use std::time::Duration;
 
 /// Enum for type of timer
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum TimerType {
     Every,
 }
@@ -43,6 +43,7 @@ impl Command {
 }
 
 /// Timer struct
+#[derive(Clone)]
 pub struct Timer {
     pub name: String,
     pub kind: TimerType,

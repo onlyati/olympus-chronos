@@ -9,3 +9,4 @@ edition = "2021"
 chrono = "0.4"
 onlyati_config = { git = "https://gitlab.atihome.lan/rust-libs/onlyati-config", tag = "latest" }
 once_cell = "*"
+notify = "4.0.12"

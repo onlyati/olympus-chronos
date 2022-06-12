@@ -30,7 +30,7 @@ fn main() {
         return;
     }
 
-    let config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
+    let mut config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
         Ok(r) => r,
         Err(e) => {
             println!("Error during config reading: {}", e);
@@ -70,6 +70,11 @@ fn main() {
         }
     }
 
+    if let None = config.get("timer_check_interval") {
+        println!("Item (timer_check_interval) cannot be found in config, default will be used: 00:00:30");
+        config.insert(String::from("timer_check_interval"), String::from("00:00:30"));
+    }
+
     /*-------------------------------------------------------------------------------------------*/
     /* Read active timers                                                                        */
     /* ==================                                                                        */
@@ -79,11 +84,12 @@ fn main() {
     /*                                                                                           */
     /* If any timer file parse has failed, then program makes a warning, but does not exit.      */
     /*-------------------------------------------------------------------------------------------*/
-    let timers = process::read_active_timer(config.get("timer_location").unwrap());
-    let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
-    if let Err(_) = timer_mut {
-        println!("Error during mutex data bind!");
-        return;
+    match process::start_timer_refresh(config.get("timer_location").unwrap(), config.get("timer_check_interval").unwrap()) {
+        Ok(_) => println!("Timers are read"),
+        Err(e) => {
+            println!("{}", e);
+            return;
+        },
     }
 
     /*-------------------------------------------------------------------------------------------*/
