@@ -33,7 +33,7 @@ fn main() {
         return;
     }
 
-    let mut config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
+    let config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
         Ok(r) => r,
         Err(e) => {
             println!("Error during config reading: {}", e);
@@ -73,11 +73,6 @@ fn main() {
         }
     }
 
-    if let None = config.get("timer_check_interval") {
-        println!("Item (timer_check_interval) cannot be found in config, default will be used: 00:00:30");
-        config.insert(String::from("timer_check_interval"), String::from("00:00:30"));
-    }
-
     /*-------------------------------------------------------------------------------------------*/
     /* Read active timers                                                                        */
     /* ==================                                                                        */
@@ -86,8 +81,11 @@ fn main() {
     /* point to the file in all_timers directory.                                                */
     /*                                                                                           */
     /* If any timer file parse has failed, then program makes a warning, but does not exit.      */
+    /*                                                                                           */
+    /* This function also starts a background process which will watch the active_timers         */
+    /* directory and remove/add timer dynamically for *.conf file changes                        */
     /*-------------------------------------------------------------------------------------------*/
-    match process::start_timer_refresh(config.get("timer_location").unwrap(), config.get("timer_check_interval").unwrap()) {
+    match process::start_timer_refresh(config.get("timer_location").unwrap()) {
         Ok(_) => println!("Timers are read"),
         Err(e) => {
             println!("{}", e);

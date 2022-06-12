@@ -94,6 +94,9 @@ pub fn set_every_timer(sender: Sender<u64>) -> Result<(), String> {
 }
 
 /// Process content of active timers
+/// 
+/// This function reads the specified time and try to parse it for a `Timer` struct. In case of any failure
+/// function returns with `None`, else return with `Some(Timer)`.
 fn process_timer_file(file_path: &String) -> Option<Timer> {
     // Get timer ID
     let file_name: &str = match file_path.split("/").collect::<Vec<&str>>().last() {
@@ -208,8 +211,8 @@ fn process_timer_file(file_path: &String) -> Option<Timer> {
 
 /// Read active timers
 /// 
-/// This function read the active timers from the ${chronos_dir}/active_timers directory. Files are technically
-/// links to the ${chronos_dir}/all_timers directory.
+/// This function read the active timers from the <root_dir>/active_timers directory. Files are technically
+/// links to the <root_dir>/all_timers directory.
 fn read_active_timer(root_dir: &String) -> Vec<Timer> {
     let timer_path = format!("{}/active_timers", root_dir);
     let timer_files = fs::read_dir(timer_path.as_str()).unwrap()
@@ -228,41 +231,18 @@ fn read_active_timer(root_dir: &String) -> Vec<Timer> {
     return timers;
 }
 
-pub fn start_timer_refresh(root_dir: &String, interval: &String) -> Result<(), String> {
+/// Timer handler function
+/// 
+/// First, this function reads all available timers from active_timers directory and upload them to a global list.
+/// After, it starts a new thread, which will have one task: watch active_timers directory and in case of CREATE or REMOVE
+/// event, modify the global timer list and Hermes data
+pub fn start_timer_refresh(root_dir: &String) -> Result<(), String> {
     // Make an initial list
     let timers = read_active_timer(root_dir);
     let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
     if let Err(_) = timer_mut {
         println!("Error during mutex data bind!");
         return Err(String::from("Error during mutex data bind"));
-    }
-
-    // Validate that 'interval' is valid and calculate in seconds
-    let times = interval.split(":").collect::<Vec<&str>>();
-    let mut seconds = 0;
-
-    if times.len() != 3 {
-        return Err(String::from("Refresh timer interval format must follow: HH:MM:SS format!"));
-    }
-
-    let multipliers: Vec<u64> = vec![60*60, 60, 1];
-    for i in 0..times.len() {
-        match times[i].parse::<u64>() {
-            Ok(r) => {
-                if r > 59 {
-                    return Err(String::from("HH:MM:SS values must be between 0 and 59"));
-                }
-                seconds += r * multipliers[i];
-            },
-            _ => {
-                println!("Interval format must follow: HH:MM:SS!");
-                continue;
-            }
-        }
-    }
-
-    if seconds == 0 {
-        return Err(String::from("No timer refresh interval is specified"));
     }
 
     let timer_path = format!("{}/active_timers", root_dir.clone());
