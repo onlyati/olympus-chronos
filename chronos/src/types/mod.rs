@@ -6,12 +6,14 @@ use std::time::Duration;
 #[derive(PartialEq, Clone)]
 pub enum TimerType {
     Every,
+    OneShot,
 }
 
 impl fmt::Display for TimerType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let printable = match *self {
             TimerType::Every => "every",
+            TimerType::OneShot => "oneshot",
         };
         write!(f, "{}", printable)
     }

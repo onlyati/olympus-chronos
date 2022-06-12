@@ -1,4 +1,6 @@
 use std::env;
+use std::fs;
+use std::mem::size_of;
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
@@ -8,6 +10,7 @@ use once_cell::sync::OnceCell;
 
 mod types;
 use crate::types::Timer;
+use crate::types::TimerType;
 
 static TIMERS_GLOB: OnceCell<Mutex<Vec<Timer>>> = OnceCell::new();
 
@@ -155,15 +158,35 @@ fn main() {
                 match timer_mut {
                     Some(_) => {
                         let mut timers = timer_mut.unwrap().lock().unwrap();
+                        let mut purged_timers: Vec<usize> = Vec::with_capacity(10 * size_of::<usize>());
+                        let mut index: usize = 0;
+
                         for timer in timers.iter_mut() {
                             if timer.next_hit == s {
                                 println!("{} has expired", timer.name);
                                 let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
-                                timer.next_hit = s + timer.interval.as_secs();
-                                if timer.next_hit >= 86400 {
-                                    timer.next_hit = timer.next_hit - 86400;
+
+                                if timer.kind == TimerType::Every {
+                                    timer.next_hit = s + timer.interval.as_secs();
+                                    if timer.next_hit >= 86400 {
+                                        timer.next_hit = timer.next_hit - 86400;
+                                    }
+                                }
+
+                                if timer.kind == TimerType::OneShot {
+                                    purged_timers.push(index);
+                                    let file_path = format!("{}/active_timers/{}.conf", config.get("timer_location").unwrap(), timer.name);
+                                    match fs::remove_file(file_path) {
+                                        Ok(_) => println!("OneShot timer ({}) is fired, so it is disabled", timer.name),
+                                        Err(e) => println!("OneShot timer ({}) is fired, but link remove failed: {:?}", timer.name, e),
+                                    }
                                 }
                             }
+                            index += 1;
+                        }
+
+                        for i in purged_timers {
+                            timers.remove(i);
                         }
                     },
                     None => println!("Failed to retreive timers list"),

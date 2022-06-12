@@ -118,6 +118,7 @@ fn process_timer_file(file_path: &String) -> Option<Timer> {
     // Get timer type
     let timer_type: TimerType = match timer_info.get("type") {
         Some(ref v) if v.as_str() == "every" => TimerType::Every,
+        Some(ref v) if v.as_str() == "oneshot" => TimerType::OneShot,
         Some(_) => {
             println!("Invalid timer type for {}", file_path);
             return None;
