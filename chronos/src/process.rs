@@ -211,11 +211,10 @@ fn process_timer_file(file_path: &String) -> Option<Timer> {
 
 /// Read active timers
 /// 
-/// This function read the active timers from the <root_dir>/active_timers directory. Files are technically
+/// This function read the active timers from the <root_dir>/startup_timers directory. Files are technically
 /// links to the <root_dir>/all_timers directory.
-fn read_active_timer() -> Vec<Timer> {
-    let timer_path = format!("active_timers");
-    let timer_files = fs::read_dir("active_timers").unwrap()
+fn read_startup_timer() -> Vec<Timer> {
+    let timer_files = fs::read_dir("startup_timers").unwrap()
         .collect::<Result<Vec<_>, io::Error>>().unwrap();
 
     let mut timers: Vec<Timer> = Vec::with_capacity(timer_files.len() * size_of::<Timer>());
@@ -233,12 +232,12 @@ fn read_active_timer() -> Vec<Timer> {
 
 /// Timer handler function
 /// 
-/// First, this function reads all available timers from active_timers directory and upload them to a global list.
-/// After, it starts a new thread, which will have one task: watch active_timers directory and in case of CREATE or REMOVE
+/// First, this function reads all available timers from startup_timers directory and upload them to a global list.
+/// After, it starts a new thread, which will have one task: watch startup_timers directory and in case of CREATE or REMOVE
 /// event, modify the global timer list and Hermes data
 pub fn start_timer_refresh() -> Result<(), String> {
     // Make an initial list
-    let timers = read_active_timer();
+    let timers = read_startup_timer();
     let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
     if let Err(_) = timer_mut {
         println!("Error during mutex data bind!");
@@ -400,9 +399,14 @@ fn listen_socket(mut stream: UnixStream) {
 
 fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, String> {
     let help_verb = String::from("help");
+    let list_verb = String::from("list");
 
     if verb == help_verb {
         return comm::help(options);
+    }
+
+    if verb == list_verb {
+        return comm::list(options);
     }
 
     return Err(String::from("Invalid command verb\n"));

@@ -84,7 +84,7 @@ fn main() {
     /* point file system should look:                                                            */
     /* root                                                                                      */
     /* |-> all_timers                                                                            */
-    /* |-> active_timers                                                                         */
+    /* |-> startup_timers                                                                        */
     /* '-> logs                                                                                  */
     /*                                                                                           */
     /* If any of them does not exist, program will try to create them. If creation is failed then*/
@@ -102,12 +102,12 @@ fn main() {
     /* Read active timers                                                                        */
     /* ==================                                                                        */
     /*                                                                                           */
-    /* Read active timers from active_timers directory. This directory contains links which are  */
+    /* Read active timers from startup_timers directory. This directory contains links which are */
     /* point to the file in all_timers directory.                                                */
     /*                                                                                           */
     /* If any timer file parse has failed, then program makes a warning, but does not exit.      */
     /*                                                                                           */
-    /* This function also starts a background process which will watch the active_timers         */
+    /* This function also starts a background process which will watch the startup_timers        */
     /* directory and remove/add timer dynamically for *.conf file changes                        */
     /*-------------------------------------------------------------------------------------------*/
     let socket = if dev_mode {
@@ -175,7 +175,7 @@ fn main() {
 
                                 if timer.kind == TimerType::OneShot {
                                     purged_timers.push(index);
-                                    let file_path = format!("{}/active_timers/{}.conf", config.get("timer_location").unwrap(), timer.name);
+                                    let file_path = format!("{}/startup_timers/{}.conf", config.get("timer_location").unwrap(), timer.name);
                                     match fs::remove_file(file_path) {
                                         Ok(_) => println!("OneShot timer ({}) is fired, so it is disabled", timer.name),
                                         Err(e) => println!("OneShot timer ({}) is fired, but link remove failed: {:?}", timer.name, e),

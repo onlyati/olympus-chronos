@@ -10,3 +10,23 @@ pub fn help(_options: Vec<String>) -> Result<String, String> {
 
     return Ok(response);
 }
+
+pub fn list(options: Vec<String>) -> Result<String, String> {
+    if options.len() == 0 {
+        return Err(String::from("You must specifiy what you want list: active, startup or all. See help for more info"));
+    }
+
+    if options[0] == String::from("active") {
+
+    }
+
+    if options[0] == String::from("startup") {
+        
+    }
+
+    if options[0] == String::from("all") {
+        
+    }
+
+    return Err(format!("Specified parameter is invalid: {}", options[0]));
+}
