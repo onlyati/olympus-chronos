@@ -1,10 +1,11 @@
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::fs::PermissionsExt;
 use std::thread;
 use std::path::Path;
 use std::{fs, io};
-use std::io::Write;
+use std::io::{Write, Read, BufReader};
 use std::time::Duration;
 use std::sync::mpsc::Sender;
-use std::sync::mpsc::channel;
 use std::mem::size_of;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -12,7 +13,6 @@ use std::sync::Mutex;
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
-use crate::hermes;
 
 use chrono::Datelike;
 use chrono::Timelike;
@@ -235,14 +235,144 @@ fn read_active_timer() -> Vec<Timer> {
 /// First, this function reads all available timers from active_timers directory and upload them to a global list.
 /// After, it starts a new thread, which will have one task: watch active_timers directory and in case of CREATE or REMOVE
 /// event, modify the global timer list and Hermes data
-pub fn start_timer_refresh(socket: &Path) -> Result<(), String> {
+pub fn start_timer_refresh() -> Result<(), String> {
     // Make an initial list
     let timers = read_active_timer();
     let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
     if let Err(_) = timer_mut {
         println!("Error during mutex data bind!");
         return Err(String::from("Error during mutex data bind"));
-    }    
+    }
+    return Ok(());
+}
+
+/// Prepare and start UNIX socket
+/// 
+/// This method preapre UNIX socket (create it and set permission and owners), then start liseting on a thread.
+pub fn start_unix_socket(socket: &Path) -> Result<(), String> {
+    // Prepare UNIX socket
+    if socket.exists() {
+        if let Err(e) = fs::remove_file(socket) {
+            return Err(format!("Error during socket remove: {:?}", e));
+        }
+    }
+
+    let listener = match UnixListener::bind(socket) {
+        Ok(l) => l,
+        Err(e) => {
+            return Err(format!("Error during socket preparation: {:?}", e));
+        },
+    };
+
+    let mut permission = fs::metadata(socket).unwrap().permissions();
+    permission.set_mode(0o775);
+    if let Err(e) = fs::set_permissions(socket, permission) {
+        return Err(format!("Error during permission change: {:?}", e));
+    }
+
+    let chown = std::process::Command::new("/usr/bin/chown")
+        .arg("root:olympus")
+        .arg(socket)
+        .output()
+        .expect("Ownership change of sockert has failed");
+
+    if !chown.status.success() {
+        std::io::stdout().write_all(&chown.stdout).unwrap();
+        std::io::stderr().write_all(&chown.stderr).unwrap();
+        return Err(String::from("Error during ownership change"));
+    }
+
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    thread::spawn(move || {
+                        listen_socket(stream);
+                    });
+                },
+                Err(e) => println!("Error occured during listening: {:?}", e),
+            }
+        }
+    });
 
     return Ok(());
+}
+
+/// This function is called by UNIX socket listener thread to handle a connection
+fn listen_socket(mut stream: UnixStream) {
+    let buffer = BufReader::new(&stream);
+
+    let mut length_u8: Vec<u8> = Vec::with_capacity(5 * size_of::<usize>());   // Store bytes while readin, itis the message length
+    let mut length: usize = 0;                                                 // This will be the parsed lenght from length_u8
+
+    let mut msg_u8: Vec<u8> = Vec::new();                                      // Store message bytes
+
+    let mut index = 0;                                                         // Index and read_msg are some variable for parsing incoming message
+    let mut read_msg: bool = false;
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Read message from the buffer and parse it accordingly                                     */
+    /*-------------------------------------------------------------------------------------------*/
+    for byte in buffer.bytes() {
+        match byte {
+            Ok(b) => {
+                /* It was the first space, first word must be a number which is the length of the subsequent message */
+                if b == b' ' && !read_msg {
+                    let msg_len_t = String::from_utf8(length_u8.clone()).unwrap();
+                    length = match msg_len_t.parse::<usize>() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            let _ = stream.write_all(b"First word must be a number which is the lenght of message\n");
+                            return;
+                        }
+                    };
+                    msg_u8 = Vec::with_capacity(length);
+                    read_msg = true;
+                    continue;
+                }
+
+                // Set timeout to avoid infinite waiting on the stream
+                stream.set_read_timeout(Some(Duration::new(0, 250))).unwrap();
+
+                /* Read from buffer */
+                if read_msg {
+                    msg_u8.push(b);
+                    index += 1;
+                    if index == length {
+                        break;
+                    }
+                    continue;
+                }
+                else {
+                    length_u8.push(b);
+                    continue;
+                }
+            },
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                let _ = stream.write_all(b"ERROR: Request is not complete within time\n");
+                return;
+            },
+            Err(e) => {
+                println!("Unexpected error: {:?}", e);
+                let _ = stream.write_all(b"ERROR: Internal server error during stream reading\n");
+                return;
+            },
+        }
+    }
+
+    if !read_msg {
+        /* This happen when the first world was not a number and new line was incoming */
+        let _ = stream.write_all(b"First word must be a number which is the lenght of message\n");
+        return;
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Readin from buffer was okay, now parse it then call the command coordinator and return    */
+    /* with the answer of the command                                                            */
+    /*-------------------------------------------------------------------------------------------*/
+    let command = String::from_utf8(msg_u8).unwrap();
+
+    println!("{}", command);
+
+    let _ = stream.write_all(b"I got itt");
 }

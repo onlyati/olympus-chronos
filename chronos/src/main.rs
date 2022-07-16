@@ -116,11 +116,19 @@ fn main() {
     };
 
 
-    match process::start_timer_refresh(socket) {
+    match process::start_timer_refresh() {
         Ok(_) => println!("Timers are read"),
         Err(e) => {
             println!("{}", e);
-            return;
+            exit(1);
+        },
+    }
+
+    match process::start_unix_socket(socket) {
+        Ok(_) => println!("UNIX socket thread has started"),
+        Err(e) => {
+            println!("{}", e);
+            exit(1);
         },
     }
 

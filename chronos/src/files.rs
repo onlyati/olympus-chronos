@@ -11,11 +11,11 @@ pub fn check_and_build_dirs() -> Result<(), String> {
         return Err(format!("all_timers"));
     }
 
-    if let Err(_) = create_dir_if_not_exist(("active_timers")) {
+    if let Err(_) = create_dir_if_not_exist("active_timers") {
         return Err(format!("active_timers"));
     }
 
-    if let Err(_) = create_dir_if_not_exist(("logs")) {
+    if let Err(_) = create_dir_if_not_exist("logs") {
         return Err(format!("active_timers"));
     }
 
