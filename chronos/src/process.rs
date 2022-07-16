@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
+use crate::comm;
 
 use chrono::Datelike;
 use chrono::Timelike;
@@ -307,7 +308,7 @@ fn listen_socket(mut stream: UnixStream) {
 
     let mut msg_u8: Vec<u8> = Vec::new();                                      // Store message bytes
 
-    let mut index = 0;                                                         // Index and read_msg are some variable for parsing incoming message
+    let mut index = 0;                                                  // Index and read_msg are some variable for parsing incoming message
     let mut read_msg: bool = false;
 
     /*-------------------------------------------------------------------------------------------*/
@@ -372,7 +373,37 @@ fn listen_socket(mut stream: UnixStream) {
     /*-------------------------------------------------------------------------------------------*/
     let command = String::from_utf8(msg_u8).unwrap();
 
-    println!("{}", command);
+    let mut verb: String = String::from("");
+    let mut options: Vec<String> = Vec::with_capacity(5 * size_of::<String>());
 
-    let _ = stream.write_all(b"I got itt");
+    let mut index = 0;
+    for word in command.split_whitespace() {
+        if index == 0 {
+            verb = String::from(word);
+        }
+        else {
+            options.push(String::from(word));
+        }
+        index += 1;
+    }
+
+    match command_coordinator(verb, options) {
+        Ok(s) => {
+            let _ = stream.write_all(s.as_bytes());
+        },
+        Err(e) => {
+            let error_msg = format!("ERROR: {}", e);
+            let _ = stream.write_all(error_msg.as_bytes());
+        }
+    }
+}
+
+fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, String> {
+    let help_verb = String::from("help");
+
+    if verb == help_verb {
+        return comm::help(options);
+    }
+
+    return Err(String::from("Invalid command verb\n"));
 }

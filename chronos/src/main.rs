@@ -19,6 +19,7 @@ static TIMERS_GLOB: OnceCell<Mutex<Vec<Timer>>> = OnceCell::new();
 mod files;
 mod process;
 mod hermes;
+mod comm;
 
 fn main() {
     /*-------------------------------------------------------------------------------------------*/
@@ -130,44 +131,6 @@ fn main() {
             println!("{}", e);
             exit(1);
         },
-    }
-
-    /*-------------------------------------------------------------------------------------------*/
-    /* Upload timers onto Hermes                                                                 */
-    /* =========================                                                                 */
-    /*                                                                                           */
-    /* If hermes is available upload the timers onto that on the specified port and address at   */
-    /* 'hermes_address' property.                                                                */
-    /*-------------------------------------------------------------------------------------------*/
-    match config.get("hermes_address") {
-        Some(v) => {
-            println!("Update Hermes with timer data");
-
-            std::env::set_var("CHRONOS_HERMES_ADDR", v);
-
-            let status = hermes::hermes_del_group("timer");
-            println!("{:?}", status);
-
-            let status = hermes::hermes_add_group("timer");
-            println!("{:?}", status);
-
-            let timer_mut = TIMERS_GLOB.get();
-            match timer_mut {
-                Some(_) => {
-                    let timers = timer_mut.unwrap().lock().unwrap();
-                    for timer in timers.iter() {
-                        let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
-                        let status = hermes::hermes_add_timer(timer.name.as_str(), info.as_str());
-                        println!("{:?}", status);
-                    }
-                },
-                None => {
-                    println!("Failed toget timer list, cannot upload to Hermes!");
-                    return;
-                }
-            }
-        },
-        None => println!("Hermes location is not specified. Updates will not be send there!"),
     }
 
     /*-------------------------------------------------------------------------------------------*/
