@@ -1,4 +1,5 @@
 use std::thread;
+use std::path::Path;
 use std::{fs, io};
 use std::io::Write;
 use std::time::Duration;
@@ -7,8 +8,6 @@ use std::sync::mpsc::channel;
 use std::mem::size_of;
 use std::collections::HashMap;
 use std::sync::Mutex;
-
-use notify::{Watcher, RecursiveMode, RawEvent, raw_watcher};
 
 use crate::types::Command;
 use crate::types::Timer;
@@ -28,13 +27,13 @@ use crate::TIMERS_GLOB;
 /// # Return
 /// 
 /// Return with `Result<(), String>`.
-pub fn exec_command(command: Command, id: String, root_dir: String) -> Result<(), String> {
+pub fn exec_command(command: Command, id: String) -> Result<(), String> {
     if command.bin.is_empty() {
         return Err(String::from("Command is not defined"));
     }
 
     std::thread::spawn(move || {
-        let log_file = format!("{}/logs/{}.log", root_dir, id);
+        let log_file = format!("logs/{}.log", id);
         let mut file =  match std::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -213,9 +212,9 @@ fn process_timer_file(file_path: &String) -> Option<Timer> {
 /// 
 /// This function read the active timers from the <root_dir>/active_timers directory. Files are technically
 /// links to the <root_dir>/all_timers directory.
-fn read_active_timer(root_dir: &String) -> Vec<Timer> {
-    let timer_path = format!("{}/active_timers", root_dir);
-    let timer_files = fs::read_dir(timer_path.as_str()).unwrap()
+fn read_active_timer() -> Vec<Timer> {
+    let timer_path = format!("active_timers");
+    let timer_files = fs::read_dir("active_timers").unwrap()
         .collect::<Result<Vec<_>, io::Error>>().unwrap();
 
     let mut timers: Vec<Timer> = Vec::with_capacity(timer_files.len() * size_of::<Timer>());
@@ -236,109 +235,14 @@ fn read_active_timer(root_dir: &String) -> Vec<Timer> {
 /// First, this function reads all available timers from active_timers directory and upload them to a global list.
 /// After, it starts a new thread, which will have one task: watch active_timers directory and in case of CREATE or REMOVE
 /// event, modify the global timer list and Hermes data
-pub fn start_timer_refresh(root_dir: &String) -> Result<(), String> {
+pub fn start_timer_refresh(socket: &Path) -> Result<(), String> {
     // Make an initial list
-    let timers = read_active_timer(root_dir);
+    let timers = read_active_timer();
     let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
     if let Err(_) = timer_mut {
         println!("Error during mutex data bind!");
         return Err(String::from("Error during mutex data bind"));
-    }
-
-    let timer_path = format!("{}/active_timers", root_dir.clone());
-
-    // Watch content of active_timers and do if something must be do
-    std::thread::spawn(move || {
-        let (tx, rx) = channel();                                    // Reaceiver and sender for Watcher
-        let mut watcher = raw_watcher(tx).unwrap();                  // Create a watcher object, delivering raw events.
-
-        // Add a path to be watched. All files and directories at that path and
-        // below will be monitored for changes.
-        watcher.watch(timer_path, RecursiveMode::Recursive).unwrap();
-
-        loop {
-            match rx.recv() {
-            Ok(RawEvent{path: Some(path), op: Ok(op), ..}) => {
-                match op {
-                    notify::op::CREATE => {
-                        let path = path.as_path().display().to_string();
-                        
-                        // Check that it is a conf file
-                        match path.split(".").collect::<Vec<&str>>().last() {
-                            Some(ref v) if v.to_string() != String::from("conf") => continue,
-                            _ => (),
-                        }
-                        
-                        match process_timer_file(&path) {
-                            Some(timer) => {
-                                let timer2 = timer.clone();
-                                {
-                                    let timer_mut = TIMERS_GLOB.get();
-                                    match timer_mut {
-                                        Some(_) => {
-                                            let mut timers = timer_mut.unwrap().lock().unwrap();
-                                            timers.push(timer);
-                                        },
-                                        None => println!("Failed to retreive timers list during timer remove"),        
-                                    }
-                                }
-                                let info = format!("{}s {} {:?}", timer2.interval.as_secs(), timer2.command.bin, timer2.command.args);
-                                let status = hermes::hermes_add_timer(timer2.name.as_str(), info.as_str());
-                                println!("{:?}", status);
-                            },
-                            None => {
-                                println!("Error during read timer config in {}", path);
-                                match fs::remove_file(path) {
-                                    Ok(_) => println!("Link is deleted"),
-                                    Err(e) => println!("Error during link remove: {:?}", e),
-                                }
-                            },
-                        }
-                    },
-                    notify::op::REMOVE => {
-                        let path = path.as_path().display().to_string();
-
-                        // Check that it is a conf file
-                        match path.split(".").collect::<Vec<&str>>().last() {
-                            Some(ref v) if v.to_string() != String::from("conf") => continue,
-                            _ => (),
-                        }
-
-                        let file_name: &str = path.split("/").collect::<Vec<&str>>().last().unwrap();
-                        let timer_id: &str = file_name.split(".conf").collect::<Vec<&str>>().first().unwrap();
-
-                        let timer_mut = TIMERS_GLOB.get();
-                        match timer_mut {
-                            Some(_) => {
-                                let mut timers = timer_mut.unwrap().lock().unwrap();
-                                let mut index: Option<usize> = None;
-                                let mut i: usize = 0;
-                                for timer in timers.iter() {
-                                    if timer.name == timer_id {
-                                        index = Some(i);
-                                        break;
-                                    }
-                                    i += 1;
-                                }
-
-                                if let Some(i) = index {
-                                    timers.remove(i);
-                                }
-                            },
-                            None => println!("Failed to retreive timers list during timer remove"),
-                        }
-
-                        let status = hermes::hermes_del_timer(timer_id);
-                        println!("{:?}", status);
-                    },
-                    _ => (),
-                }
-            },
-                Ok(event) => println!("broken event: {:?}", event),
-                Err(e) => println!("watch error: {:?}", e),
-            }
-        }
-    });
+    }    
 
     return Ok(());
 }

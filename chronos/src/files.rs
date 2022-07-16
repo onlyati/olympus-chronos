@@ -6,21 +6,17 @@
 /// # Return values
 /// 
 /// Return with `Result<(), String>. In case of Err, the parameter is the name of directory which had problem.
-pub fn check_and_build_dirs(root: &str) -> Result<(), String> {
-    if let Err(_) = create_dir_if_not_exist(root) {
-        return Err(String::from(root));
+pub fn check_and_build_dirs() -> Result<(), String> {
+    if let Err(_) = create_dir_if_not_exist("/all_timers") {
+        return Err(format!("all_timers"));
     }
 
-    if let Err(_) = create_dir_if_not_exist(format!("{}/all_timers", root).as_str()) {
-        return Err(format!("{}/all_timers", root));
+    if let Err(_) = create_dir_if_not_exist(("active_timers")) {
+        return Err(format!("active_timers"));
     }
 
-    if let Err(_) = create_dir_if_not_exist(format!("{}/active_timers", root).as_str()) {
-        return Err(format!("{}/active_timers", root));
-    }
-
-    if let Err(_) = create_dir_if_not_exist(format!("{}/logs", root).as_str()) {
-        return Err(format!("{}/log", root));
+    if let Err(_) = create_dir_if_not_exist(("logs")) {
+        return Err(format!("active_timers"));
     }
 
     return Ok(());

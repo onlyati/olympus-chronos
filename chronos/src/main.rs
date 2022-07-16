@@ -1,10 +1,12 @@
 use std::env;
 use std::fs;
 use std::mem::size_of;
+use std::path::Path;
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::Mutex;
+use std::process::exit;
 
 use once_cell::sync::OnceCell;
 
@@ -29,11 +31,38 @@ fn main() {
     /*-------------------------------------------------------------------------------------------*/
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        println!("Config path must be specified as parameter!");
+        println!("Chronos directory must be defined!");
         return;
     }
 
-    let config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
+    /*-------------------------------------------------------------------------------------------*/
+    /* Set working directory                                                                     */
+    /* =====================                                                                     */
+    /*                                                                                           */
+    /* To make file functions more transparent, work directory is changed to there where every   */
+    /* files can be located.                                                                     */
+    /*-------------------------------------------------------------------------------------------*/
+    let mut dev_mode: bool = false;
+    if args[1] == "--dev" {
+        dev_mode = true;
+    }
+
+    let work_dir = Path::new(&args[args.len() - 1]);
+    if !work_dir.exists() {
+        println!("Working directory does not exist: {}", work_dir.display());
+        exit(1);
+    }
+
+    if let Err(e) = env::set_current_dir(work_dir) {
+        println!("Work directory change to {} has failed: {:?}", work_dir.display(), e);
+        exit(1);
+    }
+
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Read the configuration from main.conf member                                              */
+    /*-------------------------------------------------------------------------------------------*/
+    let config: HashMap<String, String> = match onlyati_config::read_config("main.conf") {
         Ok(r) => r,
         Err(e) => {
             println!("Error during config reading: {}", e);
@@ -60,18 +89,13 @@ fn main() {
     /* If any of them does not exist, program will try to create them. If creation is failed then*/
     /* program make an exit.                                                                     */
     /*-------------------------------------------------------------------------------------------*/
-    match config.get("timer_location") {
-        Some(v) => {
-            if let Err(e) = files::check_and_build_dirs(v) {
-                println!("Error occured during '{}' directory creation!", e);
-                return;
-            }
-        }
-        None => {
-            println!("Option 'timer_location' is not defined in config file");
-            return;
-        }
-    }
+    match files::check_and_build_dirs() {
+        Ok(_) => (),
+        Err(e) => {
+            println!("Failed to create directories in work dir: {}", e);
+            exit(1);
+        },
+    };
 
     /*-------------------------------------------------------------------------------------------*/
     /* Read active timers                                                                        */
@@ -85,7 +109,14 @@ fn main() {
     /* This function also starts a background process which will watch the active_timers         */
     /* directory and remove/add timer dynamically for *.conf file changes                        */
     /*-------------------------------------------------------------------------------------------*/
-    match process::start_timer_refresh(config.get("timer_location").unwrap()) {
+    let socket = if dev_mode {
+        Path::new("/tmp/chronos-dev.sock")
+    } else {
+        Path::new("/tmp/chronos.sock")
+    };
+
+
+    match process::start_timer_refresh(socket) {
         Ok(_) => println!("Timers are read"),
         Err(e) => {
             println!("{}", e);
@@ -162,7 +193,7 @@ fn main() {
                         for timer in timers.iter_mut() {
                             if timer.next_hit == s {
                                 println!("{} has expired", timer.name);
-                                let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
+                                let _ = process::exec_command(timer.command.clone(), timer.name.clone());
 
                                 if timer.kind == TimerType::Every {
                                     timer.next_hit = s + timer.interval.as_secs();
