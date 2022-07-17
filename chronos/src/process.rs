@@ -97,7 +97,7 @@ pub fn set_every_timer(sender: Sender<u64>) -> Result<(), String> {
 /// 
 /// This function reads the specified time and try to parse it for a `Timer` struct. In case of any failure
 /// function returns with `None`, else return with `Some(Timer)`.
-fn process_timer_file(file_path: &String) -> Option<Timer> {
+pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     // Get timer ID
     let file_name: &str = match file_path.split("/").collect::<Vec<&str>>().last() {
         Some(v) => v,
