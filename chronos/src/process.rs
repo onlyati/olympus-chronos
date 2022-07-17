@@ -122,6 +122,7 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     let timer_type: TimerType = match timer_info.get("type") {
         Some(ref v) if v.as_str() == "every" => TimerType::Every,
         Some(ref v) if v.as_str() == "oneshot" => TimerType::OneShot,
+        Some(ref v) if v.as_str() == "at" => TimerType::At,
         Some(_) => {
             println!("Invalid timer type for {}", file_path);
             return None;
@@ -133,7 +134,7 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     };
 
     // Get timer interval
-    let timer_interval: Duration = match timer_info.get("interval") {
+    let mut timer_interval: Duration = match timer_info.get("interval") {
         Some(v) => {
             let times = v.split(":").collect::<Vec<&str>>();
             let mut seconds = 0;
@@ -204,7 +205,14 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     let v = v.num_seconds_from_midnight();
     let v: u64 = v.into();
 
-    let timer_next_hit = v + timer_interval.as_secs();
+    let timer_next_hit: u64 = if timer_type == TimerType::At {
+        let temp = timer_interval.as_secs();
+        timer_interval = Duration::new(0, 0);
+        temp
+    } else {
+        v + timer_interval.as_secs()
+    };
+    
 
     return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit));
 }
