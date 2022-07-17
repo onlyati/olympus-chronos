@@ -1,5 +1,4 @@
 use std::env;
-use std::fs;
 use std::mem::size_of;
 use std::path::Path;
 use std::collections::HashMap;
@@ -175,11 +174,6 @@ fn main() {
 
                                 if timer.kind == TimerType::OneShot {
                                     purged_timers.push(index);
-                                    let file_path = format!("{}/startup_timers/{}.conf", config.get("timer_location").unwrap(), timer.name);
-                                    match fs::remove_file(file_path) {
-                                        Ok(_) => println!("OneShot timer ({}) is fired, so it is disabled", timer.name),
-                                        Err(e) => println!("OneShot timer ({}) is fired, but link remove failed: {:?}", timer.name, e),
-                                    }
                                 }
                             }
                             index += 1;

@@ -21,8 +21,47 @@ pub fn help(_options: Vec<String>) -> Result<String, String> {
     response += "List details of all timer config:    list all expanded\n";
     response += "Purge timer:                         purge <timer-id>\n";
     response += "Add timer:                           add <timer-id>\n";
+    response += "Enable startup timer:                startup enable <timer-id>\n";
+    response += "Disable startup timer:               startup disable <timer-id>\n";
 
     return Ok(response);
+}
+
+/// Purge timer
+/// 
+/// This function is called if purge command is receive via socket
+pub fn purge(options: Vec<String>) -> Result<String, String> {
+    if options.len() != 1 {
+        return Err(String::from("Timer ID is missing"));
+    }
+
+    let timer_mut = TIMERS_GLOB.get();
+    match timer_mut {
+        Some(_) => {
+            let mut timers = timer_mut.unwrap().lock().unwrap();
+            let mut rem_index: Option<usize> = None;
+            let mut index = 0;
+            for timer in timers.iter() {
+                if timer.name == options[0] {
+                    rem_index = Some(index);
+                    break;
+                }
+                index += 1;
+            }
+            
+            if let Some(i) = rem_index {
+                if i < timers.len() {
+                    timers.remove(i);
+                    return Ok(format!("Timer ({}) has been purged\n", options[0]));
+                } else {
+                    return Err(format!("Internal error occured: length of timers: {}, purge index: {}\n", timers.len(), i));
+                }
+            }
+        },
+        None => return Err(String::from("Internal error during clamiming global timer list\n")),
+    }
+
+    return Err(String::from("Invalid purge request"));
 }
 
 /// List response
