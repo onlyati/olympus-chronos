@@ -1,0 +1,13 @@
+[Unit]
+Description=Chronos unit in Olmypus
+After=olympos.hermes.service
+
+[Service]
+User=root
+ExecStart=/usr/share/olympus/chronos/chronos /etc/olympus/chronos
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+
