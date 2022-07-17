@@ -7,6 +7,7 @@ use chrono::Duration;
 use crate::types::Timer;
 use crate::process;
 use crate::TIMERS_GLOB;
+use crate::types::TimerType;
 
 /// Help response
 /// 
@@ -273,10 +274,24 @@ pub fn list(options: Vec<String>) -> Result<String, String> {
 }
 
 /// Format timer vector then print it
-fn print_timers(timers: Vec<Timer>, need_next_hit: bool) -> String {
+fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
     let mut max_len_name: usize = 0;
     let mut max_len_int: usize = 0;
     let mut max_len_user: usize = 0;
+
+    for timer in &mut timers {
+        if timer.kind == TimerType::At {
+            timer.next_hit += 86400;
+        }
+    }
+
+    timers.sort_unstable_by_key(|k| k.next_hit);
+
+    for timer in &mut timers {
+        if timer.kind == TimerType::At {
+            timer.next_hit -= 86400;
+        }
+    }
 
     // Calculate the max length of fields
     for timer in &timers {
@@ -294,8 +309,8 @@ fn print_timers(timers: Vec<Timer>, need_next_hit: bool) -> String {
         }
     }
 
-    if max_len_int < "Interval".len() {
-        max_len_int = "Interval".len();
+    if max_len_int < "Not applicable".len() {
+        max_len_int = "Not applicable".len();
     }
 
     let mut response = String::new();
@@ -316,6 +331,12 @@ fn print_timers(timers: Vec<Timer>, need_next_hit: bool) -> String {
         let time_now = Local::now();
         let time_now = time_now.num_seconds_from_midnight();
         let time_now: u64 = time_now.into();
+
+        let interval = if timer.kind == TimerType::At {
+            String::from("Not applicable")
+        } else {
+            format!("{:?}", timer.interval)
+        };
         
         if need_next_hit {
             let mut next_hit = String::new();
@@ -324,8 +345,8 @@ fn print_timers(timers: Vec<Timer>, need_next_hit: bool) -> String {
                 let now = Local::now() + Duration::days(1);
 
                 let hours = timer.next_hit / 60 / 60;
-                let minutes = timer.next_hit - hours * 60 * 60;
-                let seconds = timer.next_hit - hours * 60 * 60 - minutes * 60;                
+                let minutes = (timer.next_hit - hours * 60 * 60) / 60;
+                let seconds = timer.next_hit - hours * 60 * 60 - minutes * 60;
                 
                 next_hit = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), hours, minutes, seconds);
             }
@@ -340,9 +361,9 @@ fn print_timers(timers: Vec<Timer>, need_next_hit: bool) -> String {
                 next_hit = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), hours, minutes, seconds);
             }
 
-            response += format!("{:max_len_name$} | {:7} | {:max_len_int$?} | {:20} | {:max_len_user$} | {}\n", timer.name, format!("{}", timer.kind), timer.interval, next_hit, timer.command.user, cmd).as_str();
+            response += format!("{:max_len_name$} | {:7} | {:max_len_int$} | {:20} | {:max_len_user$} | {}\n", timer.name, format!("{}", timer.kind), interval, next_hit, timer.command.user, cmd).as_str();
         } else {
-            response += format!("{:max_len_name$} | {:7} | {:max_len_int$?} | {:max_len_user$} | {}\n", timer.name, format!("{}", timer.kind), timer.interval, timer.command.user, cmd).as_str();
+            response += format!("{:max_len_name$} | {:7} | {:max_len_int$} | {:max_len_user$} | {}\n", timer.name, format!("{}", timer.kind), interval, timer.command.user, cmd).as_str();
         }
     }
 

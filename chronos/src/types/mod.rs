@@ -7,6 +7,7 @@ use std::time::Duration;
 pub enum TimerType {
     Every,
     OneShot,
+    At,
 }
 
 impl fmt::Display for TimerType {
@@ -14,6 +15,7 @@ impl fmt::Display for TimerType {
         let printable = match *self {
             TimerType::Every => "every",
             TimerType::OneShot => "oneshot",
+            TimerType::At => "at",
         };
         write!(f, "{}", printable)
     }
