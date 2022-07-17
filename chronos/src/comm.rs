@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::mem::size_of;
 use chrono::prelude::*;
 use chrono::Duration;
@@ -27,6 +28,64 @@ pub fn help(_options: Vec<String>) -> Result<String, String> {
     return Ok(response);
 }
 
+/// Function to manipulate default timers
+/// 
+/// Via this function, users can define which timers must be start aftert Chronos startup
+pub fn startup(options: Vec<String>) -> Result<String, String> {
+    if options.len() < 2 {
+        return Err(String::from("Invalid syntax"));
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Enable startup timer (create symlink)                                                     */
+    /*-------------------------------------------------------------------------------------------*/
+    if options[0] == String::from("enable") {
+        let path = format!("all_timers/{}.conf", options[1]);
+        let path = Path::new(&path);
+
+        if !path.exists() {
+            return Err(format!("Timer ({}) does not exist in all_timers\n", options[1]));
+        }
+
+        let path = format!("../all_timers/{}.conf", options[1]);
+        let path = Path::new(&path);
+
+        let symlink = format!("startup_timers/{}.conf", options[1]);
+        let symlink = Path::new(&symlink);
+
+        if symlink.exists() {
+            return Err(format!("Timer ({}) is already enabled\n", options[1]));
+        }
+
+        match std::os::unix::fs::symlink(path, symlink) {
+            Ok(_) => return Ok(format!("Timer ({}) will be added automatically after startup\n", options[1])),
+            Err(e) => return Err(format!("Failed to enable timer startup for {}: {:?}\n", options[1], e)),
+        }
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Disable startup timer (remove symlink)                                                    */
+    /*-------------------------------------------------------------------------------------------*/
+    if options[0] == String::from("disable") {
+        let path = format!("startup_timers/{}.conf", options[1]);
+        let path = Path::new(&path);
+
+        if !path.exists() {
+            return Err(format!("Timer ({}) cannot be found in startup timers\n", options[1]));
+        }
+
+        match fs::remove_file(path) {
+            Ok(_) => return Ok(format!("Timer ({}) will not be added automatically after startup\n", options[1])),
+            Err(e) => return Err(format!("Failed to disable timer startup for {}: {:?}\n", options[1], e)),
+        }
+    }
+
+    return Err(String::from("Invalid enable request\n"));
+}
+
+/// Add new timer
+/// 
+/// This function add new timer from all_timers directory
 pub fn add(options: Vec<String>) -> Result<String, String> {
     if options.len() == 0 {
         return Err(String::from("Timer ID is missing\n"));
@@ -36,15 +95,29 @@ pub fn add(options: Vec<String>) -> Result<String, String> {
 
     let timer = match process::process_timer_file(&path) {
         Some(t) => t,
-        None =>  return Err(format!("Failed to add timer, see Chronos log for details")),
+        None =>  return Err(format!("Error in timer config, see Chronos log for details")),
     };
 
     let timer_mut = TIMERS_GLOB.get();
     match timer_mut {
         Some(_) => {
             let mut timers = timer_mut.unwrap().lock().unwrap();
-            timers.push(timer);
-            return Ok(format!("Timer ({}) has been added\n", options[0]));
+
+            let mut found: bool = false;
+            for timer in timers.iter() {
+                if timer.name == options[0] {
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                timers.push(timer);
+                return Ok(format!("Timer ({}) has been added\n", options[0]));
+            } else {
+                return Err(format!("Timer ({}) is already exist\n", options[0]));
+            }
+            
         },
         None => return Err(String::from("Internal error during clamiming global timer list\n")),
     }
