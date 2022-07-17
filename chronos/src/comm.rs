@@ -27,11 +27,34 @@ pub fn help(_options: Vec<String>) -> Result<String, String> {
     return Ok(response);
 }
 
+pub fn add(options: Vec<String>) -> Result<String, String> {
+    if options.len() == 0 {
+        return Err(String::from("Timer ID is missing\n"));
+    }
+
+    let path = format!("all_timers/{}.conf", options[0]);
+
+    let timer = match process::process_timer_file(&path) {
+        Some(t) => t,
+        None =>  return Err(format!("Failed to add timer, see Chronos log for details")),
+    };
+
+    let timer_mut = TIMERS_GLOB.get();
+    match timer_mut {
+        Some(_) => {
+            let mut timers = timer_mut.unwrap().lock().unwrap();
+            timers.push(timer);
+            return Ok(format!("Timer ({}) has been added\n", options[0]));
+        },
+        None => return Err(String::from("Internal error during clamiming global timer list\n")),
+    }
+}
+
 /// Purge timer
 /// 
 /// This function is called if purge command is receive via socket
 pub fn purge(options: Vec<String>) -> Result<String, String> {
-    if options.len() != 1 {
+    if options.len() == 0 {
         return Err(String::from("Timer ID is missing"));
     }
 

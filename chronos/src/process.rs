@@ -401,6 +401,11 @@ fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, Str
     let help_verb = String::from("help");
     let list_verb = String::from("list");
     let purge_veb = String::from("purge");
+    let add_verb = String::from("add");
+
+    if verb == add_verb {
+        return comm::add(options);   
+    }
 
     if verb == purge_veb {
         return comm::purge(options);
