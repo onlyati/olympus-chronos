@@ -1,19 +1,19 @@
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::fs::PermissionsExt;
 use std::thread;
+use std::path::Path;
 use std::{fs, io};
-use std::io::Write;
+use std::io::{Write, Read, BufReader};
 use std::time::Duration;
 use std::sync::mpsc::Sender;
-use std::sync::mpsc::channel;
 use std::mem::size_of;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use notify::{Watcher, RecursiveMode, RawEvent, raw_watcher};
-
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
-use crate::hermes;
+use crate::comm;
 
 use chrono::Datelike;
 use chrono::Timelike;
@@ -28,13 +28,13 @@ use crate::TIMERS_GLOB;
 /// # Return
 /// 
 /// Return with `Result<(), String>`.
-pub fn exec_command(command: Command, id: String, root_dir: String) -> Result<(), String> {
+pub fn exec_command(command: Command, id: String) -> Result<(), String> {
     if command.bin.is_empty() {
         return Err(String::from("Command is not defined"));
     }
 
     std::thread::spawn(move || {
-        let log_file = format!("{}/logs/{}.log", root_dir, id);
+        let log_file = format!("logs/{}.log", id);
         let mut file =  match std::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -97,7 +97,7 @@ pub fn set_every_timer(sender: Sender<u64>) -> Result<(), String> {
 /// 
 /// This function reads the specified time and try to parse it for a `Timer` struct. In case of any failure
 /// function returns with `None`, else return with `Some(Timer)`.
-fn process_timer_file(file_path: &String) -> Option<Timer> {
+pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     // Get timer ID
     let file_name: &str = match file_path.split("/").collect::<Vec<&str>>().last() {
         Some(v) => v,
@@ -211,11 +211,10 @@ fn process_timer_file(file_path: &String) -> Option<Timer> {
 
 /// Read active timers
 /// 
-/// This function read the active timers from the <root_dir>/active_timers directory. Files are technically
+/// This function read the active timers from the <root_dir>/startup_timers directory. Files are technically
 /// links to the <root_dir>/all_timers directory.
-fn read_active_timer(root_dir: &String) -> Vec<Timer> {
-    let timer_path = format!("{}/active_timers", root_dir);
-    let timer_files = fs::read_dir(timer_path.as_str()).unwrap()
+fn read_startup_timer() -> Vec<Timer> {
+    let timer_files = fs::read_dir("startup_timers").unwrap()
         .collect::<Result<Vec<_>, io::Error>>().unwrap();
 
     let mut timers: Vec<Timer> = Vec::with_capacity(timer_files.len() * size_of::<Timer>());
@@ -233,112 +232,197 @@ fn read_active_timer(root_dir: &String) -> Vec<Timer> {
 
 /// Timer handler function
 /// 
-/// First, this function reads all available timers from active_timers directory and upload them to a global list.
-/// After, it starts a new thread, which will have one task: watch active_timers directory and in case of CREATE or REMOVE
+/// First, this function reads all available timers from startup_timers directory and upload them to a global list.
+/// After, it starts a new thread, which will have one task: watch startup_timers directory and in case of CREATE or REMOVE
 /// event, modify the global timer list and Hermes data
-pub fn start_timer_refresh(root_dir: &String) -> Result<(), String> {
+pub fn start_timer_refresh() -> Result<(), String> {
     // Make an initial list
-    let timers = read_active_timer(root_dir);
+    let timers = read_startup_timer();
     let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
     if let Err(_) = timer_mut {
         println!("Error during mutex data bind!");
         return Err(String::from("Error during mutex data bind"));
     }
+    return Ok(());
+}
 
-    let timer_path = format!("{}/active_timers", root_dir.clone());
+/// Prepare and start UNIX socket
+/// 
+/// This method preapre UNIX socket (create it and set permission and owners), then start liseting on a thread.
+pub fn start_unix_socket(socket: &Path) -> Result<(), String> {
+    // Prepare UNIX socket
+    if socket.exists() {
+        if let Err(e) = fs::remove_file(socket) {
+            return Err(format!("Error during socket remove: {:?}", e));
+        }
+    }
 
-    // Watch content of active_timers and do if something must be do
-    std::thread::spawn(move || {
-        let (tx, rx) = channel();                                    // Reaceiver and sender for Watcher
-        let mut watcher = raw_watcher(tx).unwrap();                  // Create a watcher object, delivering raw events.
+    let listener = match UnixListener::bind(socket) {
+        Ok(l) => l,
+        Err(e) => {
+            return Err(format!("Error during socket preparation: {:?}", e));
+        },
+    };
 
-        // Add a path to be watched. All files and directories at that path and
-        // below will be monitored for changes.
-        watcher.watch(timer_path, RecursiveMode::Recursive).unwrap();
+    let mut permission = fs::metadata(socket).unwrap().permissions();
+    permission.set_mode(0o775);
+    if let Err(e) = fs::set_permissions(socket, permission) {
+        return Err(format!("Error during permission change: {:?}", e));
+    }
 
-        loop {
-            match rx.recv() {
-            Ok(RawEvent{path: Some(path), op: Ok(op), ..}) => {
-                match op {
-                    notify::op::CREATE => {
-                        let path = path.as_path().display().to_string();
-                        
-                        // Check that it is a conf file
-                        match path.split(".").collect::<Vec<&str>>().last() {
-                            Some(ref v) if v.to_string() != String::from("conf") => continue,
-                            _ => (),
-                        }
-                        
-                        match process_timer_file(&path) {
-                            Some(timer) => {
-                                let timer2 = timer.clone();
-                                {
-                                    let timer_mut = TIMERS_GLOB.get();
-                                    match timer_mut {
-                                        Some(_) => {
-                                            let mut timers = timer_mut.unwrap().lock().unwrap();
-                                            timers.push(timer);
-                                        },
-                                        None => println!("Failed to retreive timers list during timer remove"),        
-                                    }
-                                }
-                                let info = format!("{}s {} {:?}", timer2.interval.as_secs(), timer2.command.bin, timer2.command.args);
-                                let status = hermes::hermes_add_timer(timer2.name.as_str(), info.as_str());
-                                println!("{:?}", status);
-                            },
-                            None => {
-                                println!("Error during read timer config in {}", path);
-                                match fs::remove_file(path) {
-                                    Ok(_) => println!("Link is deleted"),
-                                    Err(e) => println!("Error during link remove: {:?}", e),
-                                }
-                            },
-                        }
-                    },
-                    notify::op::REMOVE => {
-                        let path = path.as_path().display().to_string();
+    let chown = std::process::Command::new("/usr/bin/chown")
+        .arg("root:olympus")
+        .arg(socket)
+        .output()
+        .expect("Ownership change of sockert has failed");
 
-                        // Check that it is a conf file
-                        match path.split(".").collect::<Vec<&str>>().last() {
-                            Some(ref v) if v.to_string() != String::from("conf") => continue,
-                            _ => (),
-                        }
+    if !chown.status.success() {
+        std::io::stdout().write_all(&chown.stdout).unwrap();
+        std::io::stderr().write_all(&chown.stderr).unwrap();
+        return Err(String::from("Error during ownership change"));
+    }
 
-                        let file_name: &str = path.split("/").collect::<Vec<&str>>().last().unwrap();
-                        let timer_id: &str = file_name.split(".conf").collect::<Vec<&str>>().first().unwrap();
-
-                        let timer_mut = TIMERS_GLOB.get();
-                        match timer_mut {
-                            Some(_) => {
-                                let mut timers = timer_mut.unwrap().lock().unwrap();
-                                let mut index: Option<usize> = None;
-                                let mut i: usize = 0;
-                                for timer in timers.iter() {
-                                    if timer.name == timer_id {
-                                        index = Some(i);
-                                        break;
-                                    }
-                                    i += 1;
-                                }
-
-                                if let Some(i) = index {
-                                    timers.remove(i);
-                                }
-                            },
-                            None => println!("Failed to retreive timers list during timer remove"),
-                        }
-
-                        let status = hermes::hermes_del_timer(timer_id);
-                        println!("{:?}", status);
-                    },
-                    _ => (),
-                }
-            },
-                Ok(event) => println!("broken event: {:?}", event),
-                Err(e) => println!("watch error: {:?}", e),
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    thread::spawn(move || {
+                        listen_socket(stream);
+                    });
+                },
+                Err(e) => println!("Error occured during listening: {:?}", e),
             }
         }
     });
 
     return Ok(());
+}
+
+/// This function is called by UNIX socket listener thread to handle a connection
+fn listen_socket(mut stream: UnixStream) {
+    let buffer = BufReader::new(&stream);
+
+    let mut length_u8: Vec<u8> = Vec::with_capacity(5 * size_of::<usize>());   // Store bytes while readin, itis the message length
+    let mut length: usize = 0;                                                 // This will be the parsed lenght from length_u8
+
+    let mut msg_u8: Vec<u8> = Vec::new();                                      // Store message bytes
+
+    let mut index = 0;                                                  // Index and read_msg are some variable for parsing incoming message
+    let mut read_msg: bool = false;
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Read message from the buffer and parse it accordingly                                     */
+    /*-------------------------------------------------------------------------------------------*/
+    for byte in buffer.bytes() {
+        match byte {
+            Ok(b) => {
+                /* It was the first space, first word must be a number which is the length of the subsequent message */
+                if b == b' ' && !read_msg {
+                    let msg_len_t = String::from_utf8(length_u8.clone()).unwrap();
+                    length = match msg_len_t.parse::<usize>() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            let _ = stream.write_all(b"First word must be a number which is the lenght of message\n");
+                            return;
+                        }
+                    };
+                    msg_u8 = Vec::with_capacity(length);
+                    read_msg = true;
+                    continue;
+                }
+
+                // Set timeout to avoid infinite waiting on the stream
+                stream.set_read_timeout(Some(Duration::new(0, 250))).unwrap();
+
+                /* Read from buffer */
+                if read_msg {
+                    msg_u8.push(b);
+                    index += 1;
+                    if index == length {
+                        break;
+                    }
+                    continue;
+                }
+                else {
+                    length_u8.push(b);
+                    continue;
+                }
+            },
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                let _ = stream.write_all(b"ERROR: Request is not complete within time\n");
+                return;
+            },
+            Err(e) => {
+                println!("Unexpected error: {:?}", e);
+                let _ = stream.write_all(b"ERROR: Internal server error during stream reading\n");
+                return;
+            },
+        }
+    }
+
+    if !read_msg {
+        /* This happen when the first world was not a number and new line was incoming */
+        let _ = stream.write_all(b"First word must be a number which is the lenght of message\n");
+        return;
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Readin from buffer was okay, now parse it then call the command coordinator and return    */
+    /* with the answer of the command                                                            */
+    /*-------------------------------------------------------------------------------------------*/
+    let command = String::from_utf8(msg_u8).unwrap();
+
+    let mut verb: String = String::from("");
+    let mut options: Vec<String> = Vec::with_capacity(5 * size_of::<String>());
+
+    let mut index = 0;
+    for word in command.split_whitespace() {
+        if index == 0 {
+            verb = String::from(word);
+        }
+        else {
+            options.push(String::from(word));
+        }
+        index += 1;
+    }
+
+    match command_coordinator(verb, options) {
+        Ok(s) => {
+            let _ = stream.write_all(s.as_bytes());
+        },
+        Err(e) => {
+            let error_msg = format!("ERROR: {}", e);
+            let _ = stream.write_all(error_msg.as_bytes());
+        }
+    }
+}
+
+fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, String> {
+    let help_verb = String::from("help");
+    let list_verb = String::from("list");
+    let purge_veb = String::from("purge");
+    let add_verb = String::from("add");
+    let startup_verb = String::from("startup");
+
+    if verb == startup_verb {
+        return comm::startup(options);
+    }
+
+    if verb == add_verb {
+        return comm::add(options);   
+    }
+
+    if verb == purge_veb {
+        return comm::purge(options);
+    }
+
+    if verb == help_verb {
+        return comm::help(options);
+    }
+
+    if verb == list_verb {
+        return comm::list(options);
+    }
+
+    return Err(String::from("Invalid command verb\n"));
 }

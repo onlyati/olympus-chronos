@@ -1,10 +1,11 @@
 use std::env;
-use std::fs;
 use std::mem::size_of;
+use std::path::Path;
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::Mutex;
+use std::process::exit;
 
 use once_cell::sync::OnceCell;
 
@@ -17,6 +18,7 @@ static TIMERS_GLOB: OnceCell<Mutex<Vec<Timer>>> = OnceCell::new();
 mod files;
 mod process;
 mod hermes;
+mod comm;
 
 fn main() {
     /*-------------------------------------------------------------------------------------------*/
@@ -29,11 +31,38 @@ fn main() {
     /*-------------------------------------------------------------------------------------------*/
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        println!("Config path must be specified as parameter!");
+        println!("Chronos directory must be defined!");
         return;
     }
 
-    let config: HashMap<String, String> = match onlyati_config::read_config(args[1].as_str()) {
+    /*-------------------------------------------------------------------------------------------*/
+    /* Set working directory                                                                     */
+    /* =====================                                                                     */
+    /*                                                                                           */
+    /* To make file functions more transparent, work directory is changed to there where every   */
+    /* files can be located.                                                                     */
+    /*-------------------------------------------------------------------------------------------*/
+    let mut dev_mode: bool = false;
+    if args[1] == "--dev" {
+        dev_mode = true;
+    }
+
+    let work_dir = Path::new(&args[args.len() - 1]);
+    if !work_dir.exists() {
+        println!("Working directory does not exist: {}", work_dir.display());
+        exit(1);
+    }
+
+    if let Err(e) = env::set_current_dir(work_dir) {
+        println!("Work directory change to {} has failed: {:?}", work_dir.display(), e);
+        exit(1);
+    }
+
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Read the configuration from main.conf member                                              */
+    /*-------------------------------------------------------------------------------------------*/
+    let config: HashMap<String, String> = match onlyati_config::read_config("main.conf") {
         Ok(r) => r,
         Err(e) => {
             println!("Error during config reading: {}", e);
@@ -54,81 +83,53 @@ fn main() {
     /* point file system should look:                                                            */
     /* root                                                                                      */
     /* |-> all_timers                                                                            */
-    /* |-> active_timers                                                                         */
+    /* |-> startup_timers                                                                        */
     /* '-> logs                                                                                  */
     /*                                                                                           */
     /* If any of them does not exist, program will try to create them. If creation is failed then*/
     /* program make an exit.                                                                     */
     /*-------------------------------------------------------------------------------------------*/
-    match config.get("timer_location") {
-        Some(v) => {
-            if let Err(e) = files::check_and_build_dirs(v) {
-                println!("Error occured during '{}' directory creation!", e);
-                return;
-            }
-        }
-        None => {
-            println!("Option 'timer_location' is not defined in config file");
-            return;
-        }
-    }
+    match files::check_and_build_dirs() {
+        Ok(_) => (),
+        Err(e) => {
+            println!("Failed to create directories in work dir: {}", e);
+            exit(1);
+        },
+    };
 
     /*-------------------------------------------------------------------------------------------*/
     /* Read active timers                                                                        */
     /* ==================                                                                        */
     /*                                                                                           */
-    /* Read active timers from active_timers directory. This directory contains links which are  */
+    /* Read active timers from startup_timers directory. This directory contains links which are */
     /* point to the file in all_timers directory.                                                */
     /*                                                                                           */
     /* If any timer file parse has failed, then program makes a warning, but does not exit.      */
     /*                                                                                           */
-    /* This function also starts a background process which will watch the active_timers         */
+    /* This function also starts a background process which will watch the startup_timers        */
     /* directory and remove/add timer dynamically for *.conf file changes                        */
     /*-------------------------------------------------------------------------------------------*/
-    match process::start_timer_refresh(config.get("timer_location").unwrap()) {
+    let socket = if dev_mode {
+        Path::new("/tmp/chronos-dev.sock")
+    } else {
+        Path::new("/tmp/chronos.sock")
+    };
+
+
+    match process::start_timer_refresh() {
         Ok(_) => println!("Timers are read"),
         Err(e) => {
             println!("{}", e);
-            return;
+            exit(1);
         },
     }
 
-    /*-------------------------------------------------------------------------------------------*/
-    /* Upload timers onto Hermes                                                                 */
-    /* =========================                                                                 */
-    /*                                                                                           */
-    /* If hermes is available upload the timers onto that on the specified port and address at   */
-    /* 'hermes_address' property.                                                                */
-    /*-------------------------------------------------------------------------------------------*/
-    match config.get("hermes_address") {
-        Some(v) => {
-            println!("Update Hermes with timer data");
-
-            std::env::set_var("CHRONOS_HERMES_ADDR", v);
-
-            let status = hermes::hermes_del_group("timer");
-            println!("{:?}", status);
-
-            let status = hermes::hermes_add_group("timer");
-            println!("{:?}", status);
-
-            let timer_mut = TIMERS_GLOB.get();
-            match timer_mut {
-                Some(_) => {
-                    let timers = timer_mut.unwrap().lock().unwrap();
-                    for timer in timers.iter() {
-                        let info = format!("{}s {} {:?}", timer.interval.as_secs(), timer.command.bin, timer.command.args);
-                        let status = hermes::hermes_add_timer(timer.name.as_str(), info.as_str());
-                        println!("{:?}", status);
-                    }
-                },
-                None => {
-                    println!("Failed toget timer list, cannot upload to Hermes!");
-                    return;
-                }
-            }
+    match process::start_unix_socket(socket) {
+        Ok(_) => println!("UNIX socket thread has started"),
+        Err(e) => {
+            println!("{}", e);
+            exit(1);
         },
-        None => println!("Hermes location is not specified. Updates will not be send there!"),
     }
 
     /*-------------------------------------------------------------------------------------------*/
@@ -162,7 +163,7 @@ fn main() {
                         for timer in timers.iter_mut() {
                             if timer.next_hit == s {
                                 println!("{} has expired", timer.name);
-                                let _ = process::exec_command(timer.command.clone(), timer.name.clone(), config.get("timer_location").unwrap().to_string());
+                                let _ = process::exec_command(timer.command.clone(), timer.name.clone());
 
                                 if timer.kind == TimerType::Every {
                                     timer.next_hit = s + timer.interval.as_secs();
@@ -173,11 +174,6 @@ fn main() {
 
                                 if timer.kind == TimerType::OneShot {
                                     purged_timers.push(index);
-                                    let file_path = format!("{}/active_timers/{}.conf", config.get("timer_location").unwrap(), timer.name);
-                                    match fs::remove_file(file_path) {
-                                        Ok(_) => println!("OneShot timer ({}) is fired, so it is disabled", timer.name),
-                                        Err(e) => println!("OneShot timer ({}) is fired, but link remove failed: {:?}", timer.name, e),
-                                    }
                                 }
                             }
                             index += 1;
