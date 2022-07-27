@@ -280,7 +280,20 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
     let mut max_len_int: usize = 0;
     let mut max_len_user: usize = 0;
 
-    timers.sort_unstable_by_key(|k| k.next_hit + 86400 * day_difference(&k.days) as u64);
+    let sort = |k: &Timer| -> u64 {
+        let diff = day_difference(&k.days);
+        if diff != 0 {
+            return k.next_hit + 86400 * diff as u64;
+        }
+
+        if k.kind == TimerType::At && k.next_hit < Local::now().num_seconds_from_midnight() as u64 {
+            return k.next_hit + 86400;
+
+        }
+        return k.next_hit;
+    };
+
+    timers.sort_unstable_by_key(sort);
 
     // Calculate the max length of fields
     for timer in &timers {
