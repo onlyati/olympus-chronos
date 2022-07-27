@@ -10,6 +10,9 @@ use std::mem::size_of;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use chrono::Local;
+use chrono::Weekday;
+
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
@@ -285,7 +288,11 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
         let temp = timer_interval.as_secs();
         timer_interval = Duration::new(0, 0);
         temp
-    } else {
+    } 
+    else if timer_type == TimerType::Every && !timer_days[num_of_today()] {
+        0 as u64
+    }
+    else {
         v + timer_interval.as_secs()
     };
     
@@ -509,4 +516,18 @@ fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, Str
     }
 
     return Err(String::from("Invalid command verb\n"));
+}
+
+fn num_of_today() -> usize {
+    let now = Local::now();
+    let mut day_map: HashMap<Weekday, usize> = HashMap::new();
+    day_map.insert(Weekday::Mon, 0);
+    day_map.insert(Weekday::Tue, 1);
+    day_map.insert(Weekday::Wed, 2);
+    day_map.insert(Weekday::Thu, 3);
+    day_map.insert(Weekday::Fri, 4);
+    day_map.insert(Weekday::Sat, 5);
+    day_map.insert(Weekday::Sun, 6);
+
+    return *day_map.get(&now.weekday()).unwrap();
 }
