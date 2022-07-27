@@ -252,8 +252,6 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
                         return None;
                     }
 
-                    println!("{}-{}", from, to);
-
                     for i in from..to {
                         days[i] = true;
                     }
@@ -265,22 +263,17 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
                 
             }
 
-            let mut day_str: String = String::new();
-            for day in days {
-                if day {
-                    day_str += "X ";
-                }
-                else {
-                    day_str += "_ ";
-                }
-            }
-
-            day_str
+            days
         },
         None => {
-            String::from("X X X X X X X")
+            vec![true, true, true, true, true, true, true]
         }
     };
+
+    if timer_days == vec![false, false, false, false, false, false, false] {
+        println!("Timer will never run due to day setting for {}", file_path);
+        return None;
+    }
 
     let timer_command: Command = Command::new(timer_command, timer_user);
 

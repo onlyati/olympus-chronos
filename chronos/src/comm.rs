@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::mem::size_of;
@@ -279,19 +280,7 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
     let mut max_len_int: usize = 0;
     let mut max_len_user: usize = 0;
 
-    for timer in &mut timers {
-        if timer.kind == TimerType::At {
-            timer.next_hit += 86400;
-        }
-    }
-
-    timers.sort_unstable_by_key(|k| k.next_hit);
-
-    for timer in &mut timers {
-        if timer.kind == TimerType::At {
-            timer.next_hit -= 86400;
-        }
-    }
+    timers.sort_unstable_by_key(|k| k.next_hit + 86400 * day_difference(&k.days) as u64);
 
     // Calculate the max length of fields
     for timer in &timers {
@@ -339,26 +328,53 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
         };
         
         if need_next_hit {
+            let day_diff = day_difference(&timer.days);
+            println!("{} -> {}", timer.name, day_diff);
+
             let next_hit: String;
             if timer.next_hit < time_now {
                 // It is on tomorrow
-                let now = Local::now() + Duration::days(1);
+                let now = {
+                    if day_diff == 0 {
+                        Local::now() + Duration::days(1)
+                    }
+                    else {
+                        Local::now() + Duration::days(day_diff)
+                    }
+                };
 
                 let hours = timer.next_hit / 60 / 60;
                 let minutes = (timer.next_hit - hours * 60 * 60) / 60;
                 let seconds = timer.next_hit - hours * 60 * 60 - minutes * 60;
                 
-                next_hit = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), hours, minutes, seconds);
+                if day_diff == 0 || timer.kind == TimerType::At {
+                    next_hit = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), hours, minutes, seconds);
+                }
+                else {
+                    next_hit = format!("{}-{:02}-{:02} 00:00:00", now.year(), now.month(), now.day());
+                }                
             }
             else {
                 // It is on today
-                let now = Local::now();
+                let now = {
+                    if day_diff == 0 {
+                        Local::now()
+                    }
+                    else {
+                        Local::now() + Duration::days(day_diff)
+                    }
+                };
 
                 let hours = timer.next_hit / 60 / 60;
                 let minutes = (timer.next_hit - hours * 60 * 60) / 60;
                 let seconds = timer.next_hit - hours * 60 * 60 - minutes * 60;
 
-                next_hit = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), hours, minutes, seconds);
+                if day_diff == 0 || timer.kind == TimerType::At {
+                    next_hit = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), hours, minutes, seconds);
+                }
+                else {
+                    next_hit = format!("{}-{:02}-{:02} 00:00:00", now.year(), now.month(), now.day());
+                }                
             }
 
             response += format!("{:max_len_name$} | {:7} | {:max_len_int$} | {:20} | {:max_len_user$} | {}\n", timer.name, format!("{}", timer.kind), interval, next_hit, timer.command.user, cmd).as_str();
@@ -368,4 +384,65 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
     }
 
     return response;
+}
+
+fn day_difference(days: &Vec<bool>) -> i64 {
+    println!("{:?}", days);
+    let mut day_map: HashMap<Weekday, usize> = HashMap::new();
+    day_map.insert(Weekday::Mon, 0);
+    day_map.insert(Weekday::Tue, 1);
+    day_map.insert(Weekday::Wed, 2);
+    day_map.insert(Weekday::Thu, 3);
+    day_map.insert(Weekday::Fri, 4);
+    day_map.insert(Weekday::Sat, 5);
+    day_map.insert(Weekday::Sun, 6);
+
+    let now = Local::now();
+    let now = now.weekday();
+
+    let today = day_map.get(&now).unwrap();
+
+    if days[*today] {
+        return 0;
+    }
+
+    let mut next = {
+        let mut next_day: usize = 99;
+        for day in *today..7 {
+            if days[day] == true {
+                next_day = day;
+                break;
+            }
+        }
+        next_day
+    };
+
+    if next == 99 {
+        next = {
+            let mut next_day: usize = 99;
+            for day in 0..*today {
+                if days[day] == true {
+                    next_day = day;
+                    break;
+                }
+            }
+            next_day
+        };
+    }
+
+    let mut day_diff: i64 = 0;
+     
+    if next > *today {
+        let temp = next - *today;
+        day_diff = temp as i64;
+    }
+
+    if next < *today {
+        let temp = 7 - *today + next;
+        day_diff = temp as i64;
+    }
+
+    println!("{} {} {}", today, next, day_diff);
+
+    return day_diff;
 }
