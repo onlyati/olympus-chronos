@@ -54,16 +54,18 @@ pub struct Timer {
     pub interval: Duration,
     pub command: Command,
     pub next_hit: u64,
+    pub days: String,
 }
 
 impl Timer {
-    pub fn new(name: String, kind: TimerType, interval: Duration, command: Command, next_hit: u64) -> Timer {
+    pub fn new(name: String, kind: TimerType, interval: Duration, command: Command, next_hit: u64, days: String) -> Timer {
         return Timer {
             name: name,
             kind: kind,
             interval: interval,
             command: command,
             next_hit: next_hit,
+            days: days,
         }
     }
 }

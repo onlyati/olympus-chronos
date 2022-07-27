@@ -177,7 +177,7 @@ pub fn list(options: Vec<String>) -> Result<String, String> {
         /* Collect information from global shared list, and process later                        */
         /* So Mutex is kept until copy not until end of process                                  */
         /*---------------------------------------------------------------------------------------*/
-        let mut timers: Vec<Timer> = Vec::new();
+        let timers: Vec<Timer>;
 
         {
             let timer_mut = TIMERS_GLOB.get();
@@ -339,7 +339,7 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
         };
         
         if need_next_hit {
-            let mut next_hit = String::new();
+            let next_hit: String;
             if timer.next_hit < time_now {
                 // It is on tomorrow
                 let now = Local::now() + Duration::days(1);

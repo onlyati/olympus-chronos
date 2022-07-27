@@ -199,6 +199,89 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
         }
     };
 
+    // Get days to run timer
+    let timer_days = match timer_info.get("days") {
+        Some(v) => {
+            let mut days: Vec<bool> = vec![false, false, false, false, false, false, false];
+            
+            for part in v.split(",") {
+                let part = part.trim();
+                
+                if part.len() == 1 {
+                    let ch: Vec<char> = part.chars().collect();
+                    let c = ch[0] as u8;
+                    if c < 49 && c > 55 {
+                        println!("Days can only be numbers in {}", file_path);
+                        return None;
+                    }
+                    let index = c - 49;
+                    let index: usize = index as usize;
+                    days[index] = true;
+                }
+                else if part.len() == 3 {
+                    let ch: Vec<char> = part.chars().collect();
+                    if ch[1] != '-' {
+                        println!("Section limits must be separated be '-' in {}", file_path);
+                        return None;
+                    }
+
+                    let from = {
+                        let c = ch[0] as u8;
+                        if c < 49 && c > 55 {
+                            println!("Days can only be numbers in {}", file_path);
+                            return None;
+                        }
+                        let index = c - 49;
+                        let index: usize = index as usize;
+                        index
+                    };
+
+                    let to = {
+                        let c = ch[2] as u8;
+                        if c < 49 && c > 55 {
+                            println!("Days can only be numbers in {}", file_path);
+                            return None;
+                        }
+                        let index = c - 49;
+                        let index: usize = index as usize;
+                        index + 1
+                    };
+
+                    if from > to {
+                        println!("Section limit must begin with lower number in {}", file_path);
+                        return None;
+                    }
+
+                    println!("{}-{}", from, to);
+
+                    for i in from..to {
+                        days[i] = true;
+                    }
+                }
+                else {
+                    println!("Invalid day settings for {}", file_path);
+                    return None;
+                }
+                
+            }
+
+            let mut day_str: String = String::new();
+            for day in days {
+                if day {
+                    day_str += "X ";
+                }
+                else {
+                    day_str += "_ ";
+                }
+            }
+
+            day_str
+        },
+        None => {
+            String::from("X X X X X X X")
+        }
+    };
+
     let timer_command: Command = Command::new(timer_command, timer_user);
 
     let v = chrono::Local::now();
@@ -214,7 +297,7 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     };
     
 
-    return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit));
+    return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit, timer_days));
 }
 
 /// Read active timers
