@@ -329,7 +329,6 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
         
         if need_next_hit {
             let day_diff = day_difference(&timer.days);
-            println!("{} -> {}", timer.name, day_diff);
 
             let next_hit: String;
             if timer.next_hit < time_now {
@@ -387,7 +386,6 @@ fn print_timers(mut timers: Vec<Timer>, need_next_hit: bool) -> String {
 }
 
 fn day_difference(days: &Vec<bool>) -> i64 {
-    println!("{:?}", days);
     let mut day_map: HashMap<Weekday, usize> = HashMap::new();
     day_map.insert(Weekday::Mon, 0);
     day_map.insert(Weekday::Tue, 1);
@@ -441,8 +439,6 @@ fn day_difference(days: &Vec<bool>) -> i64 {
         let temp = 7 - *today + next;
         day_diff = temp as i64;
     }
-
-    println!("{} {} {}", today, next, day_diff);
 
     return day_diff;
 }
