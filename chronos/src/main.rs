@@ -8,6 +8,8 @@ use std::sync::Mutex;
 use std::process::exit;
 
 use once_cell::sync::OnceCell;
+use chrono::{Local, Datelike};
+use chrono::Weekday;
 
 mod types;
 use crate::types::Timer;
@@ -161,7 +163,7 @@ fn main() {
                         let mut index: usize = 0;
 
                         for timer in timers.iter_mut() {
-                            if timer.next_hit == s {
+                            if timer.next_hit == s && timer.days[num_of_today()] {
                                 println!("{} has expired", timer.name);
                                 let _ = process::exec_command(timer.command.clone(), timer.name.clone());
 
@@ -191,3 +193,16 @@ fn main() {
     }
 }
 
+fn num_of_today() -> usize {
+    let now = Local::now();
+    let mut day_map: HashMap<Weekday, usize> = HashMap::new();
+    day_map.insert(Weekday::Mon, 0);
+    day_map.insert(Weekday::Tue, 1);
+    day_map.insert(Weekday::Wed, 2);
+    day_map.insert(Weekday::Thu, 3);
+    day_map.insert(Weekday::Fri, 4);
+    day_map.insert(Weekday::Sat, 5);
+    day_map.insert(Weekday::Sun, 6);
+
+    return *day_map.get(&now.weekday()).unwrap();
+}

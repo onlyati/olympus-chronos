@@ -10,6 +10,9 @@ use std::mem::size_of;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use chrono::Local;
+use chrono::Weekday;
+
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
@@ -199,6 +202,82 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
         }
     };
 
+    // Get days to run timer
+    let timer_days = match timer_info.get("days") {
+        Some(v) => {
+            let mut days: Vec<bool> = vec![false, false, false, false, false, false, false];
+            
+            for part in v.split(",") {
+                let part = part.trim();
+                
+                if part.len() == 1 {
+                    let ch: Vec<char> = part.chars().collect();
+                    let c = ch[0] as u8;
+                    if c < 49 && c > 55 {
+                        println!("Days can only be numbers in {}", file_path);
+                        return None;
+                    }
+                    let index = c - 49;
+                    let index: usize = index as usize;
+                    days[index] = true;
+                }
+                else if part.len() == 3 {
+                    let ch: Vec<char> = part.chars().collect();
+                    if ch[1] != '-' {
+                        println!("Section limits must be separated be '-' in {}", file_path);
+                        return None;
+                    }
+
+                    let from = {
+                        let c = ch[0] as u8;
+                        if c < 49 && c > 55 {
+                            println!("Days can only be numbers in {}", file_path);
+                            return None;
+                        }
+                        let index = c - 49;
+                        let index: usize = index as usize;
+                        index
+                    };
+
+                    let to = {
+                        let c = ch[2] as u8;
+                        if c < 49 && c > 55 {
+                            println!("Days can only be numbers in {}", file_path);
+                            return None;
+                        }
+                        let index = c - 49;
+                        let index: usize = index as usize;
+                        index + 1
+                    };
+
+                    if from > to {
+                        println!("Section limit must begin with lower number in {}", file_path);
+                        return None;
+                    }
+
+                    for i in from..to {
+                        days[i] = true;
+                    }
+                }
+                else {
+                    println!("Invalid day settings for {}", file_path);
+                    return None;
+                }
+                
+            }
+
+            days
+        },
+        None => {
+            vec![true, true, true, true, true, true, true]
+        }
+    };
+
+    if timer_days == vec![false, false, false, false, false, false, false] {
+        println!("Timer will never run due to day setting for {}", file_path);
+        return None;
+    }
+
     let timer_command: Command = Command::new(timer_command, timer_user);
 
     let v = chrono::Local::now();
@@ -209,12 +288,16 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
         let temp = timer_interval.as_secs();
         timer_interval = Duration::new(0, 0);
         temp
-    } else {
+    } 
+    else if timer_type == TimerType::Every && !timer_days[num_of_today()] {
+        0 as u64
+    }
+    else {
         v + timer_interval.as_secs()
     };
     
 
-    return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit));
+    return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit, timer_days));
 }
 
 /// Read active timers
@@ -433,4 +516,18 @@ fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, Str
     }
 
     return Err(String::from("Invalid command verb\n"));
+}
+
+fn num_of_today() -> usize {
+    let now = Local::now();
+    let mut day_map: HashMap<Weekday, usize> = HashMap::new();
+    day_map.insert(Weekday::Mon, 0);
+    day_map.insert(Weekday::Tue, 1);
+    day_map.insert(Weekday::Wed, 2);
+    day_map.insert(Weekday::Thu, 3);
+    day_map.insert(Weekday::Fri, 4);
+    day_map.insert(Weekday::Sat, 5);
+    day_map.insert(Weekday::Sun, 6);
+
+    return *day_map.get(&now.weekday()).unwrap();
 }
