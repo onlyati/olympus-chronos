@@ -8,7 +8,6 @@ use std::time::Duration;
 use std::sync::mpsc::Sender;
 use std::mem::size_of;
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 use chrono::Local;
 use chrono::Weekday;
@@ -21,7 +20,7 @@ use crate::comm;
 use chrono::Datelike;
 use chrono::Timelike;
 
-use crate::TIMERS_GLOB;
+use crate::TIMERS;
 
 /// Execute command
 /// 
@@ -329,10 +328,9 @@ fn read_startup_timer() -> Vec<Timer> {
 pub fn start_timer_refresh() -> Result<(), String> {
     // Make an initial list
     let timers = read_startup_timer();
-    let timer_mut = TIMERS_GLOB.set(Mutex::new(timers));
-    if let Err(_) = timer_mut {
-        println!("Error during mutex data bind!");
-        return Err(String::from("Error during mutex data bind"));
+    let mut timer_mut = TIMERS.lock().unwrap();
+    for timer in timers {
+        timer_mut.push(timer);
     }
     return Ok(());
 }

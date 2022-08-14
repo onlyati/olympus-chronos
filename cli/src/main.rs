@@ -13,6 +13,11 @@ fn main() {
 
     args.remove(0);
 
+    if args[0] == "--version" {
+        println!("v.0.1.1");
+        exit(0);
+    }
+
     let socket = if args[0] == "--dev" {
         args.remove(0);
         Path::new("/tmp/chronos-dev.sock")

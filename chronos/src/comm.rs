@@ -7,8 +7,9 @@ use chrono::Duration;
 
 use crate::types::Timer;
 use crate::process;
-use crate::TIMERS_GLOB;
 use crate::types::TimerType;
+
+use crate::TIMERS;
 
 /// Help response
 /// 
@@ -100,28 +101,21 @@ pub fn add(options: Vec<String>) -> Result<String, String> {
         None =>  return Err(format!("Error in timer config, see Chronos log for details")),
     };
 
-    let timer_mut = TIMERS_GLOB.get();
-    match timer_mut {
-        Some(_) => {
-            let mut timers = timer_mut.unwrap().lock().unwrap();
+    let mut timers = TIMERS.lock().unwrap();
 
-            let mut found: bool = false;
-            for timer in timers.iter() {
-                if timer.name == options[0] {
-                    found = true;
-                    break;
-                }
-            }
+    let mut found: bool = false;
+    for timer in timers.iter() {
+        if timer.name == options[0] {
+            found = true;
+            break;
+        }
+    }
 
-            if !found {
-                timers.push(timer);
-                return Ok(format!("Timer ({}) has been added\n", options[0]));
-            } else {
-                return Err(format!("Timer ({}) is already exist\n", options[0]));
-            }
-            
-        },
-        None => return Err(String::from("Internal error during clamiming global timer list\n")),
+    if !found {
+        timers.push(timer);
+        return Ok(format!("Timer ({}) has been added\n", options[0]));
+    } else {
+        return Err(format!("Timer ({}) is already exist\n", options[0]));
     }
 }
 
@@ -133,30 +127,24 @@ pub fn purge(options: Vec<String>) -> Result<String, String> {
         return Err(String::from("Timer ID is missing"));
     }
 
-    let timer_mut = TIMERS_GLOB.get();
-    match timer_mut {
-        Some(_) => {
-            let mut timers = timer_mut.unwrap().lock().unwrap();
-            let mut rem_index: Option<usize> = None;
-            let mut index = 0;
-            for timer in timers.iter() {
-                if timer.name == options[0] {
-                    rem_index = Some(index);
-                    break;
-                }
-                index += 1;
-            }
-            
-            if let Some(i) = rem_index {
-                if i < timers.len() {
-                    timers.remove(i);
-                    return Ok(format!("Timer ({}) has been purged\n", options[0]));
-                } else {
-                    return Err(format!("Internal error occured: length of timers: {}, purge index: {}\n", timers.len(), i));
-                }
-            }
-        },
-        None => return Err(String::from("Internal error during clamiming global timer list\n")),
+    let mut timers = TIMERS.lock().unwrap();
+    let mut rem_index: Option<usize> = None;
+    let mut index = 0;
+    for timer in timers.iter() {
+        if timer.name == options[0] {
+            rem_index = Some(index);
+            break;
+        }
+        index += 1;
+    }
+    
+    if let Some(i) = rem_index {
+        if i < timers.len() {
+            timers.remove(i);
+            return Ok(format!("Timer ({}) has been purged\n", options[0]));
+        } else {
+            return Err(format!("Internal error occured: length of timers: {}, purge index: {}\n", timers.len(), i));
+        }
     }
 
     return Err(String::from("Invalid purge request"));
@@ -178,23 +166,14 @@ pub fn list(options: Vec<String>) -> Result<String, String> {
         /* Collect information from global shared list, and process later                        */
         /* So Mutex is kept until copy not until end of process                                  */
         /*---------------------------------------------------------------------------------------*/
-        let timers: Vec<Timer>;
-
-        {
-            let timer_mut = TIMERS_GLOB.get();
-            let timer_temp: Vec<Timer> = match timer_mut {
-                Some(_) => {
-                    let timers = timer_mut.unwrap().lock().unwrap();
-                    let mut temp: Vec<Timer> = Vec::with_capacity(timers.len() * size_of::<Timer>());
-                    for timer in timers.iter() {
-                        temp.push(timer.clone());
-                    }
-                    temp
-                },
-                None => return Err(String::from("Internal error during clamiming global timer list")),
-            };
-            timers = timer_temp;
-        }
+        let timers: Vec<Timer> = {
+            let timers = TIMERS.lock().unwrap();
+            let mut temp: Vec<Timer> = Vec::with_capacity(timers.len() * size_of::<Timer>());
+            for timer in timers.iter() {
+                temp.push(timer.clone());
+            }
+            temp
+        };
 
         /*---------------------------------------------------------------------------------------*/
         /* Format the output                                                                     */

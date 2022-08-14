@@ -7,7 +7,6 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::sync::Mutex;
 use std::process::exit;
 
-use once_cell::sync::OnceCell;
 use chrono::{Local, Datelike};
 use chrono::Weekday;
 
@@ -15,14 +14,15 @@ mod types;
 use crate::types::Timer;
 use crate::types::TimerType;
 
-static TIMERS_GLOB: OnceCell<Mutex<Vec<Timer>>> = OnceCell::new();
+static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
 
 mod files;
 mod process;
-mod hermes;
 mod comm;
 
 fn main() {
+    println!("Version 0.1.1 is starting...");
+
     /*-------------------------------------------------------------------------------------------*/
     /* Argument verification                                                                     */
     /* =====================                                                                     */
@@ -155,37 +155,31 @@ fn main() {
     loop {
         match rx.recv() {
             Ok(s) => {
-                let timer_mut = TIMERS_GLOB.get();
-                match timer_mut {
-                    Some(_) => {
-                        let mut timers = timer_mut.unwrap().lock().unwrap();
-                        let mut purged_timers: Vec<usize> = Vec::with_capacity(10 * size_of::<usize>());
-                        let mut index: usize = 0;
+                let mut timers = TIMERS.lock().unwrap();
+                let mut purged_timers: Vec<usize> = Vec::with_capacity(10 * size_of::<usize>());
+                let mut index: usize = 0;
 
-                        for timer in timers.iter_mut() {
-                            if timer.next_hit == s && timer.days[num_of_today()] {
-                                println!("{} has expired", timer.name);
-                                let _ = process::exec_command(timer.command.clone(), timer.name.clone());
+                for timer in timers.iter_mut() {
+                    if timer.next_hit == s && timer.days[num_of_today()] {
+                        println!("{} has expired", timer.name);
+                        let _ = process::exec_command(timer.command.clone(), timer.name.clone());
 
-                                if timer.kind == TimerType::Every {
-                                    timer.next_hit = s + timer.interval.as_secs();
-                                    if timer.next_hit >= 86400 {
-                                        timer.next_hit = timer.next_hit - 86400;
-                                    }
-                                }
-
-                                if timer.kind == TimerType::OneShot {
-                                    purged_timers.push(index);
-                                }
+                        if timer.kind == TimerType::Every {
+                            timer.next_hit = s + timer.interval.as_secs();
+                            if timer.next_hit >= 86400 {
+                                timer.next_hit = timer.next_hit - 86400;
                             }
-                            index += 1;
                         }
 
-                        for i in purged_timers {
-                            timers.remove(i);
+                        if timer.kind == TimerType::OneShot {
+                            purged_timers.push(index);
                         }
-                    },
-                    None => println!("Failed to retreive timers list"),
+                    }
+                    index += 1;
+                }
+
+                for i in purged_timers {
+                    timers.remove(i);
                 }
             },
             Err(_) => println!("Error during receive"),
