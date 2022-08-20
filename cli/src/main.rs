@@ -30,7 +30,7 @@ fn main() {
         }
 
         if args[i] == "--version" {
-            println!("v0.1");
+            println!("v0.1.2");
             exit(0);
         }
 

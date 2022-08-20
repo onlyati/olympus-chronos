@@ -363,7 +363,7 @@ pub fn start_unix_socket(socket: &Path) -> Result<(), String> {
         .arg("root:olympus")
         .arg(socket)
         .output()
-        .expect("Ownership change of sockert has failed");
+        .expect("Ownership change of socket has failed");
 
     if !chown.status.success() {
         std::io::stdout().write_all(&chown.stdout).unwrap();
@@ -475,15 +475,12 @@ fn listen_socket(mut stream: UnixStream) {
         index += 1;
     }
 
-    match command_coordinator(verb, options) {
-        Ok(s) => {
-            let _ = stream.write_all(s.as_bytes());
-        },
-        Err(e) => {
-            let error_msg = format!("ERROR: {}", e);
-            let _ = stream.write_all(error_msg.as_bytes());
-        }
-    }
+    let response = match command_coordinator(verb, options) {
+        Ok(s) => format!(">Done\n{}", s),
+        Err(e) => format!(">Error\n{}", e),
+    };
+
+    let _ = stream.write_all(response.as_bytes());
 }
 
 fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, String> {
