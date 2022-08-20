@@ -16,13 +16,14 @@ use crate::types::TimerType;
 
 static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
 static HERMES_ADDR: Mutex<Option<String>> = Mutex::new(None);
+static VERSION: &str = "v.0.1.2";
 
 mod files;
 mod process;
 mod comm;
 
 fn main() {
-    println!("Version 0.1.2 is starting...");
+    println!("Version {} is starting...", VERSION);
 
     /*-------------------------------------------------------------------------------------------*/
     /* Argument verification                                                                     */

@@ -31,6 +31,10 @@ pub fn help(_options: Vec<String>) -> Result<String, String> {
     return Ok(response);
 }
 
+pub fn get_version(_options: Vec<String>) -> Result<String, String> {
+    return Ok(format!("{}", crate::VERSION));
+}
+
 /// Function to manipulate default timers
 /// 
 /// Via this function, users can define which timers must be start aftert Chronos startup

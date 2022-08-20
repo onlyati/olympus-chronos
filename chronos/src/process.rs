@@ -503,30 +503,28 @@ fn listen_socket(mut stream: UnixStream) {
 }
 
 fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, String> {
-    let help_verb = String::from("help");
-    let list_verb = String::from("list");
-    let purge_veb = String::from("purge");
-    let add_verb = String::from("add");
-    let startup_verb = String::from("startup");
-
-    if verb == startup_verb {
+    if verb == "startup" {
         return comm::startup(options);
     }
 
-    if verb == add_verb {
+    if verb == "add" {
         return comm::add(options);   
     }
 
-    if verb == purge_veb {
+    if verb == "purge" {
         return comm::purge(options);
     }
 
-    if verb == help_verb {
+    if verb == "help" {
         return comm::help(options);
     }
 
-    if verb == list_verb {
+    if verb == "list" {
         return comm::list(options);
+    }
+
+    if verb == "version" {
+        return comm::get_version(options);
     }
 
     return Err(String::from("Invalid command verb\n"));
