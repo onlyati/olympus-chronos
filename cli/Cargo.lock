@@ -5,3 +5,11 @@ version = 3
 [[package]]
 name = "cli"
 version = "0.1.0"
+dependencies = [
+ "onlyati_config",
+]
+
+[[package]]
+name = "onlyati_config"
+version = "0.1.0"
+source = "git+https://gitlab.atihome.lan/rust-libs/onlyati-config?tag=latest#6788b32f01b07e9defb23a6055062d75e19ba2f2"

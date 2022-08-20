@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::sync::mpsc::Sender;
 use std::mem::size_of;
 use std::collections::HashMap;
+use std::net::TcpStream;
 
 use chrono::Local;
 use chrono::Weekday;
@@ -21,6 +22,7 @@ use chrono::Datelike;
 use chrono::Timelike;
 
 use crate::TIMERS;
+use crate::HERMES_ADDR;
 
 /// Execute command
 /// 
@@ -69,6 +71,23 @@ pub fn exec_command(command: Command, id: String) -> Result<(), String> {
                 let now = chrono::Local::now();
                 let now = format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
                 writeln!(&mut file, "{} {} Command output -> {}", now, id, line).unwrap();
+            }
+        }
+
+        let timer_rc = if cmd.status.success() {
+            String::from("OK")
+        }
+        else {
+            String::from("failed")
+        };
+
+        {
+            let hermes_addr = HERMES_ADDR.lock().unwrap();
+            if let Some(addr) = &*hermes_addr {
+                match hermes_cmd(addr, format!("set data('timer_{}', '{}') in Chronos;", id, timer_rc)) {
+                    Ok(_) => println!("Timer result, {}, result has been passed to Chronos", id),
+                    Err(e) => println!("ERROR: Failed to reach Hermes: {}", e),
+                }
             }
         }
     });
@@ -363,7 +382,7 @@ pub fn start_unix_socket(socket: &Path) -> Result<(), String> {
         .arg("root:olympus")
         .arg(socket)
         .output()
-        .expect("Ownership change of sockert has failed");
+        .expect("Ownership change of socket has failed");
 
     if !chown.status.success() {
         std::io::stdout().write_all(&chown.stdout).unwrap();
@@ -475,15 +494,12 @@ fn listen_socket(mut stream: UnixStream) {
         index += 1;
     }
 
-    match command_coordinator(verb, options) {
-        Ok(s) => {
-            let _ = stream.write_all(s.as_bytes());
-        },
-        Err(e) => {
-            let error_msg = format!("ERROR: {}", e);
-            let _ = stream.write_all(error_msg.as_bytes());
-        }
-    }
+    let response = match command_coordinator(verb, options) {
+        Ok(s) => format!(">Done\n{}", s),
+        Err(e) => format!(">Error\n{}", e),
+    };
+
+    let _ = stream.write_all(response.as_bytes());
 }
 
 fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, String> {
@@ -528,4 +544,26 @@ fn num_of_today() -> usize {
     day_map.insert(Weekday::Sun, 6);
 
     return *day_map.get(&now.weekday()).unwrap();
+}
+
+fn hermes_cmd(address: &String, cmd: String) -> Result<String, String> {
+    let mut stream = match TcpStream::connect(address) {
+        Ok(stream) => stream,
+        Err(e) => return Err(format!("ERROR: {}", e)),
+    };
+
+    let cmd = format!("{} {}", cmd.len(), cmd);
+
+    stream.write(cmd.as_bytes()).unwrap();
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+
+    let lines: Vec<&str> = response.lines().collect();
+
+    if lines[0] == ">Done" {
+        return Ok(lines[1..].join("\n"));
+    }
+
+    return Err(lines[1..].join("\n"));
 }

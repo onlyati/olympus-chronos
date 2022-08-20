@@ -15,13 +15,14 @@ use crate::types::Timer;
 use crate::types::TimerType;
 
 static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
+static HERMES_ADDR: Mutex<Option<String>> = Mutex::new(None);
 
 mod files;
 mod process;
 mod comm;
 
 fn main() {
-    println!("Version 0.1.1 is starting...");
+    println!("Version 0.1.2 is starting...");
 
     /*-------------------------------------------------------------------------------------------*/
     /* Argument verification                                                                     */
@@ -33,38 +34,14 @@ fn main() {
     /*-------------------------------------------------------------------------------------------*/
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        println!("Chronos directory must be defined!");
+        println!("Chronos config must be defined!");
         return;
     }
 
     /*-------------------------------------------------------------------------------------------*/
-    /* Set working directory                                                                     */
-    /* =====================                                                                     */
-    /*                                                                                           */
-    /* To make file functions more transparent, work directory is changed to there where every   */
-    /* files can be located.                                                                     */
-    /*-------------------------------------------------------------------------------------------*/
-    let mut dev_mode: bool = false;
-    if args[1] == "--dev" {
-        dev_mode = true;
-    }
-
-    let work_dir = Path::new(&args[args.len() - 1]);
-    if !work_dir.exists() {
-        println!("Working directory does not exist: {}", work_dir.display());
-        exit(1);
-    }
-
-    if let Err(e) = env::set_current_dir(work_dir) {
-        println!("Work directory change to {} has failed: {:?}", work_dir.display(), e);
-        exit(1);
-    }
-
-
-    /*-------------------------------------------------------------------------------------------*/
     /* Read the configuration from main.conf member                                              */
     /*-------------------------------------------------------------------------------------------*/
-    let config: HashMap<String, String> = match onlyati_config::read_config("main.conf") {
+    let config: HashMap<String, String> = match onlyati_config::read_config(&args[1]) {
         Ok(r) => r,
         Err(e) => {
             println!("Error during config reading: {}", e);
@@ -75,6 +52,29 @@ fn main() {
     println!("Configuration:");
     for (setting, value) in &config {
         println!("{} -> {}", setting, value);
+    }
+
+    if let Some(addr) = config.get("hermes_addr") {
+        let mut hermes_addr = HERMES_ADDR.lock().unwrap();
+        *hermes_addr = Some(addr.clone());
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Set working directory                                                                     */
+    /* =====================                                                                     */
+    /*                                                                                           */
+    /* To make file functions more transparent, work directory is changed to there where every   */
+    /* files can be located.                                                                     */
+    /*-------------------------------------------------------------------------------------------*/
+    let work_dir = Path::new(config.get("work_dir").expect("work_dir does not found config file"));
+    if !work_dir.exists() {
+        println!("Working directory does not exist: {}", work_dir.display());
+        exit(1);
+    }
+
+    if let Err(e) = env::set_current_dir(work_dir) {
+        println!("Work directory change to {} has failed: {:?}", work_dir.display(), e);
+        exit(1);
     }
 
     /*-------------------------------------------------------------------------------------------*/
@@ -111,12 +111,8 @@ fn main() {
     /* This function also starts a background process which will watch the startup_timers        */
     /* directory and remove/add timer dynamically for *.conf file changes                        */
     /*-------------------------------------------------------------------------------------------*/
-    let socket = if dev_mode {
-        Path::new("/tmp/chronos-dev.sock")
-    } else {
-        Path::new("/tmp/chronos.sock")
-    };
-
+    let socket = config.get("socket_name").expect("socket_name is not specified in config");
+    let socket = Path::new(socket);
 
     match process::start_timer_refresh() {
         Ok(_) => println!("Timers are read"),
