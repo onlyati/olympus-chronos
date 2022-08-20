@@ -21,7 +21,7 @@ mod process;
 mod comm;
 
 fn main() {
-    println!("Version 0.1.1 is starting...");
+    println!("Version 0.1.2 is starting...");
 
     /*-------------------------------------------------------------------------------------------*/
     /* Argument verification                                                                     */
