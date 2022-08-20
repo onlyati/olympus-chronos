@@ -105,13 +105,21 @@ fn main() {
         }
     };
 
-    if let Err(e) = stream.write_all(&message.as_bytes()) {
-        println!(">Error\nError during sending data: {e:?}");
-    }
-
+    let now = std::time::Instant::now();
+    stream.write(message.as_bytes()).unwrap();
+    
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
+    let elapsed = now.elapsed();
     println!("{response}");
+
+    if input.verbose{
+        println!("#Elapsed time: {:?}", elapsed);
+    }
+
+    if response.lines().next().unwrap() != ">Done" {
+        exit(10);
+    }
 }
 
 fn get_defaults() -> HashMap<String, String> {
