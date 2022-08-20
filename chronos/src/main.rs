@@ -15,6 +15,7 @@ use crate::types::Timer;
 use crate::types::TimerType;
 
 static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
+static HERMES_ADDR: Mutex<Option<String>> = Mutex::new(None);
 
 mod files;
 mod process;
@@ -51,6 +52,11 @@ fn main() {
     println!("Configuration:");
     for (setting, value) in &config {
         println!("{} -> {}", setting, value);
+    }
+
+    if let Some(addr) = config.get("hermes_addr") {
+        let mut hermes_addr = HERMES_ADDR.lock().unwrap();
+        *hermes_addr = Some(addr.clone());
     }
 
     /*-------------------------------------------------------------------------------------------*/
@@ -107,7 +113,6 @@ fn main() {
     /*-------------------------------------------------------------------------------------------*/
     let socket = config.get("socket_name").expect("socket_name is not specified in config");
     let socket = Path::new(socket);
-
 
     match process::start_timer_refresh() {
         Ok(_) => println!("Timers are read"),
