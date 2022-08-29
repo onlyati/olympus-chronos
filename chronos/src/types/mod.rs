@@ -111,8 +111,6 @@ impl Timer {
         else {
             7 + (next_weekday - today_weekday - 1)
         };
-
-        println!("{} {} {} {} {:?}", self.name, today_weekday, next_weekday, day_diff, self.days);
         
         let day_diff = day_diff as u64;
 
@@ -124,14 +122,12 @@ impl Timer {
         let next_pos = cursor + 1;
         for i in next_pos..elements.len() {
             if elements[i] {
-                println!("asd");
                 return Some(i);
             }
         }
     
         for i in 0..next_pos {
             if elements[i] {
-                println!("dfg");
                 return Some(i);
             }
         }
