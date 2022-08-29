@@ -11,7 +11,7 @@ then
 fi
 
 # Zip every log file in the logs directory
-date +'%Y%m%d%H%M%S' | awk '{print "zip log_dump_" $1 ".zip *"}' | bash
+date +'%Y%m%d%H%M%S' | awk '{print "zip log_dump_" $1 ".zip *.log"}' | bash
 
 if [[ $? -ne 0 ]]
 then
