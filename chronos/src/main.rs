@@ -16,7 +16,7 @@ use crate::types::TimerType;
 
 static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
 static HERMES_ADDR: Mutex<Option<String>> = Mutex::new(None);
-static VERSION: &str = "v.0.2";
+static VERSION: &str = "v.0.1.3";
 
 mod files;
 mod process;
