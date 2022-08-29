@@ -10,9 +10,6 @@ use std::mem::size_of;
 use std::collections::HashMap;
 use std::net::TcpStream;
 
-use chrono::Local;
-use chrono::Weekday;
-
 use crate::types::Command;
 use crate::types::Timer;
 use crate::types::TimerType;
@@ -104,10 +101,12 @@ pub fn set_every_timer(sender: Sender<u64>) -> Result<(), String> {
     std::thread::spawn(move || {
         loop {
             thread::sleep(interval);
-            let v = chrono::Local::now();
-            let v = v.num_seconds_from_midnight();
-            let v: u64 = v.into();
-            let _ = sender.send(v);
+            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(v) => sender.send(v.as_secs()).unwrap(),
+                Err(e) => {
+                    panic!("Could not get the seconds since UNIX_EPOCH: {:?}", e);
+                },
+            }
         }
     });
 
@@ -155,7 +154,7 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     };
 
     // Get timer interval
-    let mut timer_interval: Duration = match timer_info.get("interval") {
+    let timer_interval: Duration = match timer_info.get("interval") {
         Some(v) => {
             let times = v.split(":").collect::<Vec<&str>>();
             let mut seconds = 0;
@@ -297,25 +296,8 @@ pub fn process_timer_file(file_path: &String) -> Option<Timer> {
     }
 
     let timer_command: Command = Command::new(timer_command, timer_user);
-
-    let v = chrono::Local::now();
-    let v = v.num_seconds_from_midnight();
-    let v: u64 = v.into();
-
-    let timer_next_hit: u64 = if timer_type == TimerType::At {
-        let temp = timer_interval.as_secs();
-        timer_interval = Duration::new(0, 0);
-        temp
-    } 
-    else if timer_type == TimerType::Every && !timer_days[num_of_today()] {
-        0 as u64
-    }
-    else {
-        v + timer_interval.as_secs()
-    };
     
-
-    return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_next_hit, timer_days));
+    return Some(Timer::new(String::from(timer_id), timer_type, timer_interval, timer_command, timer_days));
 }
 
 /// Read active timers
@@ -530,20 +512,6 @@ fn command_coordinator(verb: String, options: Vec<String>) -> Result<String, Str
     return Err(String::from("Invalid command verb\n"));
 }
 
-fn num_of_today() -> usize {
-    let now = Local::now();
-    let mut day_map: HashMap<Weekday, usize> = HashMap::new();
-    day_map.insert(Weekday::Mon, 0);
-    day_map.insert(Weekday::Tue, 1);
-    day_map.insert(Weekday::Wed, 2);
-    day_map.insert(Weekday::Thu, 3);
-    day_map.insert(Weekday::Fri, 4);
-    day_map.insert(Weekday::Sat, 5);
-    day_map.insert(Weekday::Sun, 6);
-
-    return *day_map.get(&now.weekday()).unwrap();
-}
-
 fn hermes_cmd(address: &String, cmd: String) -> Result<String, String> {
     let mut stream = match TcpStream::connect(address) {
         Ok(stream) => stream,
@@ -565,3 +533,4 @@ fn hermes_cmd(address: &String, cmd: String) -> Result<String, String> {
 
     return Err(lines[1..].join("\n"));
 }
+

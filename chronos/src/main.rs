@@ -16,7 +16,7 @@ use crate::types::TimerType;
 
 static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
 static HERMES_ADDR: Mutex<Option<String>> = Mutex::new(None);
-static VERSION: &str = "v.0.1.2";
+static VERSION: &str = "v.0.2";
 
 mod files;
 mod process;
@@ -161,11 +161,8 @@ fn main() {
                         println!("{} has expired", timer.name);
                         let _ = process::exec_command(timer.command.clone(), timer.name.clone());
 
-                        if timer.kind == TimerType::Every {
-                            timer.next_hit = s + timer.interval.as_secs();
-                            if timer.next_hit >= 86400 {
-                                timer.next_hit = timer.next_hit - 86400;
-                            }
+                        if timer.kind == TimerType::Every || timer.kind == TimerType::At {
+                            timer.calculate_next_hit();
                         }
 
                         if timer.kind == TimerType::OneShot {
