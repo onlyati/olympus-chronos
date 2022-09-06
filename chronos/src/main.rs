@@ -157,7 +157,7 @@ fn main() {
                 let mut index: usize = 0;
 
                 for timer in timers.iter_mut() {
-                    if timer.next_hit == s && timer.days[num_of_today()] {
+                    if timer.next_hit  <= s && timer.days[num_of_today()] {
                         println!("{} has expired", timer.name);
                         let _ = process::exec_command(timer.command.clone(), timer.name.clone());
 
