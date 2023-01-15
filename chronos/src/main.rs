@@ -11,8 +11,10 @@ mod services;
 
 use structs::timer::Timer;
 
+use crate::enums::timer_types::TimerType;
+
 static VERSION: &str = "v.0.2.0";
-static VERBOSE: RwLock<bool> = RwLock::new(true);
+static VERBOSE: RwLock<bool> = RwLock::new(false);
 static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
 
 fn main() {
@@ -38,6 +40,19 @@ fn main() {
     println!("Configuration:");
     for (property, value) in &config {
         println!("- {} -> {}", property, value);
+    }
+
+    /*-------------------------------------------------------------------------------------------*/
+    /* Get verbous output value                                                                  */
+    /*-------------------------------------------------------------------------------------------*/
+    if let Some(v) = config.get("defaults.verbose") {
+        let mut verbose = VERBOSE.write().unwrap();
+        if v == "yes" {
+            *verbose = true;
+        }
+        else {
+            *verbose = false;
+        }
     }
 
     /*-------------------------------------------------------------------------------------------*/
@@ -90,6 +105,28 @@ fn main() {
         match rx.recv() {
             Ok(secs) => {
                 verbose_println!("Triggered second: {}", secs);
+                {
+                    let mut timers = TIMERS.lock().unwrap();
+                    let mut remove_index_list: Vec<usize> = Vec::new();
+                    let mut remove_index: usize = 0;
+                    for timer in timers.iter_mut() {
+                        if timer.should_run(secs) {
+                            println!("Execute: {}", timer.id);
+                            if timer.r#type == TimerType::OneShot {
+                                remove_index_list.push(remove_index);
+                            }
+                            else {
+                                timer.calculate_next_hit();
+                            }
+                        }
+                        remove_index += 1;
+                    }
+
+                    for index in remove_index_list {
+                        verbose_println!("main: {}: Type is oneshot so it purged", timers[index].id);
+                        timers.remove(index);
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("Failed to receive trigger: {}", e);

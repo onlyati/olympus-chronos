@@ -192,6 +192,13 @@ impl Timer {
 
         return difference;
     }
+
+    pub fn should_run(&self, now: u64) -> bool {
+        if self.next_hit <= now {
+            return true;
+        }
+        return false;
+    }
 }
 
 impl PartialEq for Timer {
