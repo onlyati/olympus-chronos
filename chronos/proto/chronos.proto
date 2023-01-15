@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option csharp_namespace = "ChronosGrpc";
+
+package chronos;
+
+service Chronos {
+    rpc VerboseLogOn (Empty) returns (Empty);
+    rpc VerboseLogOff (Empty) returns (Empty);
+    rpc ListActiveTimers (Empty) returns (TimerList);
+    rpc ListTimerConfigs (Empty) returns (TimerList);
+    rpc PurgeTimer (TimerIdArg) returns (Empty);
+    rpc CreateTimer (TimerArg) returns (Empty);
+    rpc RefreshTimer (TimerIdArg) returns (Empty);
+}
+
+message Empty {}
+
+message Timer {
+    string id = 1;
+    string type = 2;
+    string interval = 3;
+    string command = 4;
+    string next_hit = 5;
+    string days = 6;
+    bool dynamic = 7;
+}
+
+message TimerList {
+    repeated Timer timers = 1;
+}
+
+message TimerIdArg {
+    string id = 1;
+}
+
+message TimerArg {
+    string id = 1;
+    string type = 2;
+    string interval = 3;
+    string command = 4;
+    string days = 5;
+}

@@ -24,18 +24,20 @@ pub struct Timer {
     pub command: Vec<String>,
     pub next_hit: u64,
     pub days: Vec<char>,
+    pub dynamic: bool,
 }
 
 impl Timer {
     /// Create new timer from specified informations
-    pub fn new(id: String, r#type: TimerType, interval: Duration, command: Vec<String>, days: Vec<char>) -> Self {
+    pub fn new(id: String, r#type: TimerType, interval: Duration, command: Vec<String>, days: Vec<char>, dynamic: bool) -> Self {
         let mut timer = Timer {
             id,
             r#type,
             interval,
             command,
             next_hit: 0,
-            days
+            days,
+            dynamic,
         };
 
         timer.calculate_next_hit();
@@ -108,7 +110,7 @@ impl Timer {
             None => vec!['X', 'X', 'X', 'X', 'X', 'X', 'X']
         };
 
-        let timer = Timer::new(id, r#type, interval, command, days);
+        let timer = Timer::new(id, r#type, interval, command, days, false);
 
         return Ok(timer);
     }
