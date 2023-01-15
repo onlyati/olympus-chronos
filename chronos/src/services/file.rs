@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, collections::HashMap};
 
 pub fn check_and_create_dir(dir_path: Option<&String>) -> i32 {
     match dir_path {
@@ -20,4 +20,47 @@ pub fn check_and_create_dir(dir_path: Option<&String>) -> i32 {
     }
 
     return 0;
+}
+
+pub fn read_conf_files(dir_path: &String) -> Vec<HashMap<String, String>> {
+    let mut configs: Vec<HashMap<String, String>> = Vec::new();
+
+    let dir_path = Path::new(dir_path);
+    for file in std::fs::read_dir(dir_path).unwrap() {
+        let file = file.unwrap().path();
+        if file.is_file() {
+            let name = format!("{}", file.display());
+            if name.ends_with(".conf") {
+                let temp1 = name.split("/").collect::<Vec<&str>>();
+                let temp1 = temp1.last().unwrap();
+                let mut temp2 = temp1.split(".").collect::<Vec<&str>>();
+                temp2.remove(temp2.len() - 1);
+                let id = temp2.join(".");
+
+                let mut file_conf = read_conf_file(name.as_str());
+                match &mut file_conf {
+                    Ok(conf) => {
+                        conf.insert(String::from("id"), id);
+                        configs.push(conf.clone());
+                    }
+                    Err(e) => eprintln!("{}", e),
+                }
+            }
+        }
+    }
+
+    return configs;
+}
+
+pub fn read_conf_file(path: &str) -> Result<HashMap<String, String>, String> {
+    verbose_println!("read_conf_files: Reading '{}'", path);
+    let file_conf = match onlyati_config::read_config(path) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(format!("Failed to read config '{}': {}", path, e));
+        }
+    };
+    verbose_println!("read_conf_files: Config from '{}': {:?}", path, file_conf);
+
+    return Ok(file_conf);
 }

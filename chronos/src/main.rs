@@ -1,7 +1,6 @@
-use std::sync::{mpsc, RwLock};
+use std::sync::{mpsc, RwLock, Mutex};
 use std::collections::HashMap;
 use std::process::exit;
-
 
 #[macro_use]
 mod macros;
@@ -10,12 +9,15 @@ mod enums;
 mod structs;
 mod services;
 
+use structs::timer::Timer;
+
 static VERSION: &str = "v.0.2.0";
 static VERBOSE: RwLock<bool> = RwLock::new(true);
+static TIMERS: Mutex<Vec<Timer>> = Mutex::new(Vec::new());
 
 fn main() {
     println!("Version {} is starting...", VERSION);
-        
+
     /*-------------------------------------------------------------------------------------------*/
     /* Read and parse config parameters                                                          */
     /*-------------------------------------------------------------------------------------------*/
@@ -54,6 +56,20 @@ fn main() {
     }
 
     /*-------------------------------------------------------------------------------------------*/
+    /* Read startup timers and defined them                                                      */
+    /*-------------------------------------------------------------------------------------------*/
+    {
+        let timer_configs = services::file::read_conf_files(config.get("timer.all_dir").unwrap());
+        let mut timers = TIMERS.lock().unwrap();
+        for config in timer_configs {
+            match Timer::from_config(config) {
+                Ok(timer) => timers.push(timer),
+                Err(e) => eprintln!("Failed to parse timer: {}", e),
+            };            
+        }
+    }
+    
+    /*-------------------------------------------------------------------------------------------*/
     /* Start a thread which send trigger in every 1 second                                       */
     /*-------------------------------------------------------------------------------------------*/
     let (tx, rx) = mpsc::channel::<u64>();
@@ -77,7 +93,7 @@ fn main() {
     loop {
         match rx.recv() {
             Ok(secs) => {
-                println!("Seconds: {}", secs);
+                verbose_println!("Triggered second: {}", secs);
             }
             Err(e) => {
                 eprintln!("Failed to receive trigger: {}", e);
