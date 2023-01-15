@@ -1,4 +1,10 @@
 use std::{path::Path, collections::HashMap};
+use std::io::{Read, BufReader, BufRead};
+
+use crate::enums::command_output_type::CommandOutputType;
+use crate::structs::command_output::CommandOutput;
+
+use chrono::{Datelike, Timelike};
 
 pub fn check_and_create_dir(dir_path: Option<&String>) -> i32 {
     match dir_path {
@@ -63,4 +69,30 @@ pub fn read_conf_file(path: &str) -> Result<HashMap<String, String>, String> {
     verbose_println!("read_conf_files: Config from '{}': {:?}", path, file_conf);
 
     return Ok(file_conf);
+}
+
+pub fn read_buffer<T: Read>(reader: &mut BufReader<T>, out_type: CommandOutputType) -> Vec<CommandOutput> {
+    let mut line = String::new();
+    let mut messages: Vec<CommandOutput> = Vec::new();
+
+    while let Ok(size) = reader.read_line(&mut line) {
+        if size == 0 {
+            break;
+        }
+
+        messages.push(CommandOutput { 
+            time: time_is_now(), 
+            text: line.replace("\n", ""),
+            r#type: out_type 
+        });
+
+        line = String::new();
+    }
+
+    return messages;
+}
+
+fn time_is_now() -> String {
+    let now = chrono::Local::now();
+    return format!("{}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
 }

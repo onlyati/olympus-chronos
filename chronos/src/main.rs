@@ -1,6 +1,7 @@
 use std::sync::{mpsc, RwLock, Mutex};
 use std::collections::HashMap;
 use std::process::exit;
+use std::io::Write;
 
 #[macro_use]
 mod macros;
@@ -99,6 +100,14 @@ fn main() {
     });
 
     /*-------------------------------------------------------------------------------------------*/
+    /* Allocate runtime to run timer commands                                                    */
+    /*-------------------------------------------------------------------------------------------*/
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    /*-------------------------------------------------------------------------------------------*/
     /* Start main part of the program, which executes timers accordingly                         */
     /*-------------------------------------------------------------------------------------------*/
     loop {
@@ -112,6 +121,33 @@ fn main() {
                     for timer in timers.iter_mut() {
                         if timer.should_run(secs) {
                             println!("Execute: {}", timer.id);
+                            let timer2 = timer.clone();
+                            let log_dir = config.get("timer.log_dir").unwrap().clone();
+                            rt.spawn(async move {
+                                let output = timer2.execute().await;
+                                let log_file = format!("{}/{}.log", log_dir, timer2.id);
+                                let mut file = match std::fs::OpenOptions::new()
+                                    .write(true)
+                                    .create(true)
+                                    .append(true)
+                                    .open(&log_file) {
+                                        Ok(f) => f,
+                                        Err(e) => {
+                                            eprintln!("Failed to open file '{}' to write: {}", log_file, e);
+                                            return;
+                                        }
+                                    };
+                                
+                                let output = match output {
+                                    Some(o) => o,
+                                    None => return,
+                                };
+
+                                for line in output.0 {
+                                    writeln!(&mut file, "{} {} {}", line.time, line.r#type, line.text).unwrap();
+                                }
+                            });
+
                             if timer.r#type == TimerType::OneShot {
                                 remove_index_list.push(remove_index);
                             }

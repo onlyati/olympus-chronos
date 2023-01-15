@@ -1,9 +1,13 @@
-use std::collections::HashMap;
+use std::collections::HashMap; 
+use std::process::{Command, Stdio};
+use std::io::BufReader;
 
 use chrono::{Datelike, NaiveTime, Timelike};
 use tokio::time::Duration;
 
 use crate::enums::timer_types::TimerType;
+use crate::enums::command_output_type::CommandOutputType;
+use crate::structs::command_output::CommandOutput;
 
 /// Timer struct that store data about timer:
 /// - id: indentifier of timer, must be unique
@@ -12,6 +16,7 @@ use crate::enums::timer_types::TimerType;
 /// - command: what command timer has to be executed
 /// - next_hit: when timer can run next time, seconds since UNIX_EPOCH
 /// - days: which day timer can run, 'X' mean run and '_' mean don't run
+#[derive(Clone)]
 pub struct Timer {
     pub id: String,
     pub r#type: TimerType,
@@ -193,11 +198,62 @@ impl Timer {
         return difference;
     }
 
+    /// Check that timer should run, depend that what time is it now
     pub fn should_run(&self, now: u64) -> bool {
         if self.next_hit <= now {
             return true;
         }
         return false;
+    }
+
+    /// Execute command which belong to timer
+    pub async fn execute(&self) -> Option<(Vec<CommandOutput>, i32)> {
+        if self.command.len() == 0 {
+            verbose_println!("execute: {}: Command vector is empty", self.id);
+            return None;
+        }
+
+        let mut cmd = Command::new("/usr/bin/bash");
+        cmd.arg("-c");
+
+        let arg = self.command[..].join(" ");
+        verbose_println!("execute: {}: Command argument: /usr/bin/bash -c \"{}\"", self.id, arg);
+        cmd.arg(arg);
+
+        let mut child = cmd.stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let mut stdout: Vec<CommandOutput> = Vec::new();
+        let mut stderr: Vec<CommandOutput> = Vec::new();
+
+        std::thread::scope(|spawner| {
+            spawner.spawn(|| {
+                let pipe = child.stdout.as_mut().unwrap();
+                stdout = crate::services::file::read_buffer(&mut BufReader::new(pipe), CommandOutputType::Info);
+            });
+            spawner.spawn(|| {
+                let pipe = child.stderr.as_mut().unwrap();
+                stderr = crate::services::file::read_buffer(&mut BufReader::new(pipe), CommandOutputType::Error);
+            });
+
+        });
+
+        stdout.append(&mut stderr);
+        stdout.sort_by(|a, b| a.time.cmp(&b.time));
+
+        let status = child.wait();
+        verbose_println!("execute: {}: Command end status: {:?}", self.id, status);
+        let status = match status {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to wait for child: {}", e);
+                return Some((stdout, -999));
+            }
+        };
+        
+        return Some((stdout, status.code().unwrap()));
     }
 }
 
