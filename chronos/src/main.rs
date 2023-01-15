@@ -100,6 +100,20 @@ fn main() {
     });
 
     /*-------------------------------------------------------------------------------------------*/
+    /* Start gRPC server                                                                         */
+    /*-------------------------------------------------------------------------------------------*/
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let config2 = config.clone();
+    std::thread::spawn(move || {
+        rt.block_on(async move {
+            services::grpc::start_server(&config2).await.expect("Failed to start gRPC server");
+        })
+    });
+
+    /*-------------------------------------------------------------------------------------------*/
     /* Allocate runtime to run timer commands                                                    */
     /*-------------------------------------------------------------------------------------------*/
     let rt = tokio::runtime::Builder::new_multi_thread()
