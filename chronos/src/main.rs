@@ -1,15 +1,21 @@
-use std::sync::{mpsc, mpsc::{Sender, Receiver}};
+use std::sync::{mpsc, RwLock};
 use std::collections::HashMap;
 use std::process::exit;
 
+
+#[macro_use]
+mod macros;
+
 mod enums;
+mod structs;
 mod services;
 
 static VERSION: &str = "v.0.2.0";
+static VERBOSE: RwLock<bool> = RwLock::new(true);
 
 fn main() {
     println!("Version {} is starting...", VERSION);
-    
+        
     /*-------------------------------------------------------------------------------------------*/
     /* Read and parse config parameters                                                          */
     /*-------------------------------------------------------------------------------------------*/
@@ -57,7 +63,7 @@ fn main() {
             .build() {
                 Ok(rt) => rt,
                 Err(e) => {
-                    panic!("Failed to allocate tokio runtime for timer trigger");
+                    panic!("Failed to allocate tokio runtime for timer trigger: {}", e);
                 }
             };
         rt.block_on(async move {
