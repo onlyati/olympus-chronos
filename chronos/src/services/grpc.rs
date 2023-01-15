@@ -13,7 +13,6 @@ mod chronos {
 
 use crate::VERBOSE;
 use crate::TIMERS;
-use crate::enums::timer_types::TimerType;
 
 #[derive(Debug, Default)]
 struct ChronosGrpc {

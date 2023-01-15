@@ -114,6 +114,37 @@ fn main() {
     });
 
     /*-------------------------------------------------------------------------------------------*/
+    /* Allocate a tokio runtime and start Hermes client if required                              */
+    /*-------------------------------------------------------------------------------------------*/
+    let (hermes_sender, hermes_receiver) = mpsc::channel::<(String, String)>();
+    if let Some(ena) = config.get("hermes.enable") {
+        if ena == "yes" && config.get("hermes.grpc.address").is_some() && config.get("hermes.table").is_some() {
+            println!("Corresponse properties are set to yes, so start Hermes client");
+            let config2 = config.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build();
+                let rt = match rt {
+                    Ok(rt) => rt,
+                    Err(e) => panic!("Failed to allocated runtime for Hermes client: {}", e),
+                };
+
+                
+
+                rt.block_on(async move {
+                    loop {
+                        let _ = services::hermes_client::start_hermes_client(&config2, &hermes_receiver).await;
+                        eprintln!("Hermes client has failed, try to restart 30 sec later");
+                        tokio::time::sleep(tokio::time::Duration::new(30, 0)).await;
+                    }
+                })
+            });
+        }
+    }
+
+
+    /*-------------------------------------------------------------------------------------------*/
     /* Allocate runtime to run timer commands                                                    */
     /*-------------------------------------------------------------------------------------------*/
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -137,6 +168,7 @@ fn main() {
                             println!("Execute: {}", timer.id);
                             let timer2 = timer.clone();
                             let log_dir = config.get("timer.log_dir").unwrap().clone();
+                            let hermes_sender = hermes_sender.clone();
                             rt.spawn(async move {
                                 let output = timer2.execute().await;
                                 let log_file = format!("{}/{}.log", log_dir, timer2.id);
@@ -159,6 +191,13 @@ fn main() {
 
                                 for line in output.0 {
                                     writeln!(&mut file, "{} {} {}", line.time, line.r#type, line.text).unwrap();
+                                }
+
+                                if output.1 == 0 {
+                                    let _ = hermes_sender.send((format!("{}", timer2.id), String::from("OK")));
+                                }
+                                else {
+                                    let _ = hermes_sender.send((format!("{}", timer2.id), String::from("NOK")));
                                 }
                             });
 
