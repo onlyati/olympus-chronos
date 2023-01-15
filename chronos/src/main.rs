@@ -47,10 +47,6 @@ fn main() {
         exit(4);
     }
 
-    if services::file::check_and_create_dir(config.get("timer.startup_dir")) != 0 {
-        exit(4);
-    }
-
     if services::file::check_and_create_dir(config.get("timer.log_dir")) != 0 {
         exit(4);
     }
