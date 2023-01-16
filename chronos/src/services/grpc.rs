@@ -21,18 +21,21 @@ struct ChronosGrpc {
 
 #[tonic::async_trait]
 impl Chronos for ChronosGrpc {
+    /// A gRPC endpoint for  turning on verbose logging
     async fn verbose_log_on(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
         let mut v = VERBOSE.write().unwrap();
         *v = true;
         return Ok(Response::new(Empty {}));
     }
 
+    /// A gRPC endpoint for turning off verbose logging
     async fn verbose_log_off(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
         let mut v = VERBOSE.write().unwrap();
         *v = false;
         return Ok(Response::new(Empty {}));
     }
 
+    /// A gRPC endpoint for listing currently active timers
     async fn list_active_timers(&self, _request: Request<Empty>) -> Result<Response<TimerList>, Status> {
         let timers = TIMERS.lock().unwrap();
 
@@ -58,6 +61,7 @@ impl Chronos for ChronosGrpc {
         return Ok(Response::new(ret_timers));
     }
 
+    /// A gRPC endpoint for listing those timers which are in directory (aka static timers)
     async fn list_timer_configs(&self, _request: Request<Empty>) -> Result<Response<TimerList>, Status> {
         let timer_configs = crate::services::file::read_conf_files(&self.timer_dir);
         let mut timers: Vec<crate::structs::timer::Timer> = Vec::new();
@@ -90,6 +94,7 @@ impl Chronos for ChronosGrpc {
         return Ok(Response::new(ret_timers));
     }
 
+    /// A gRPC endpoint for purging existing timer
     async fn purge_timer(&self, request: Request<TimerIdArg>) -> Result<Response<Empty>, Status> {
         let id = request.into_inner().id;
 
@@ -113,6 +118,7 @@ impl Chronos for ChronosGrpc {
         }
     }
 
+    /// A gRPC endpoint for refreshing timer after file change in all timer directory
     async fn refresh_timer(&self, request: Request<TimerIdArg>) -> Result<Response<Empty>, Status> {
         let id = request.into_inner().id;
 
@@ -141,6 +147,7 @@ impl Chronos for ChronosGrpc {
         return Ok(Response::new(Empty {}));
     }
 
+    /// A gRPC endpoint for creating dynamic timer
     async fn create_timer(&self, request: Request<TimerArg>) -> Result<Response<Empty>, Status> {
         let args = request.into_inner();
         let mut timer_config: HashMap<String, String> = HashMap::new();
