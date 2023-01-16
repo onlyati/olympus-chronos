@@ -1,6 +1,7 @@
 use clap::Parser;
 use tonic::transport::{Channel, Certificate, ClientTlsConfig};
 use tonic::{Request, Response, Status};
+use std::process::exit;
 
 use chronos::chronos_client::{ChronosClient};
 use chronos::{Empty, TimerList, TimerIdArg, TimerArg};
@@ -18,13 +19,20 @@ fn main() {
         .build()
         .unwrap();
     rt.block_on(async move {
-        main_asnyc().await.unwrap();
+        match main_asnyc().await {
+            Ok(rc) => exit(rc),
+            Err(_) => exit(-999),
+        }
     });
 }
 
 async fn main_asnyc() -> Result<i32, Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    // Measure runtime of script
+    let start = std::time::Instant::now();
+
+    // Try to create and connect to gRPC server
     let grpc_channel = create_grpc_channel(args.clone()).await;
 
     let mut grpc_client = ChronosClient::new(grpc_channel);
@@ -32,13 +40,13 @@ async fn main_asnyc() -> Result<i32, Box<dyn std::error::Error>> {
     let mut final_rc = 0;
 
     match args.action {
-        Action::Create { id, r#type, interval, command, days } => {
+        Action::Create { ref id, ref r#type, ref interval, ref command, ref days } => {
             let parms = TimerArg {
-                id: id,
-                r#type: r#type,
-                interval: interval,
-                command: command,
-                days: days,
+                id: id.clone(),
+                r#type: r#type.clone(),
+                interval: interval.clone(),
+                command: command.clone(),
+                days: days.clone(),
             };
             let response: Result<Response<Empty>, Status> = grpc_client.create_timer(Request::new(parms)).await;
             match response {
@@ -118,8 +126,8 @@ async fn main_asnyc() -> Result<i32, Box<dyn std::error::Error>> {
                 }
             }
         }
-        Action::Purge { id } => {
-            let response: Result<Response<Empty>, Status> = grpc_client.purge_timer(Request::new(TimerIdArg {id: id})).await;
+        Action::Purge { ref id } => {
+            let response: Result<Response<Empty>, Status> = grpc_client.purge_timer(Request::new(TimerIdArg { id: id.clone() })).await;
             match response {
                 Ok(_) => {
                     println!("Timer is purged");
@@ -130,8 +138,8 @@ async fn main_asnyc() -> Result<i32, Box<dyn std::error::Error>> {
                 }
             }
         }
-        Action::Refresh { id } => {
-            let response: Result<Response<Empty>, Status> = grpc_client.refresh_timer(Request::new(TimerIdArg { id: id })).await;
+        Action::Refresh { ref id } => {
+            let response: Result<Response<Empty>, Status> = grpc_client.refresh_timer(Request::new(TimerIdArg { id: id.clone() })).await;
             match response {
                 Ok(_) => {
                     println!("Timer refreshed");
@@ -163,6 +171,9 @@ async fn main_asnyc() -> Result<i32, Box<dyn std::error::Error>> {
             }
         }
     }
+
+    let elapsed = start.elapsed();
+    print_verbose(&args, format!("Measured runtime: {:?}", elapsed));
 
     return Ok(final_rc);
 }
