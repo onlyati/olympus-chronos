@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc, Local, Datelike, Timelike};
+
 use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -42,12 +44,26 @@ impl Chronos for ChronosGrpc {
         let mut ret_timers: Vec<Timer> = Vec::new();
 
         for timer in timers.iter() {
+            let date = match chrono::NaiveDateTime::from_timestamp_opt(timer.next_hit as i64, 0) {
+                Some(date) => date,
+                None => return Err(Status::internal(String::from("Could not convert next hit time"))),
+            };
+            let date: DateTime<Utc> = chrono::DateTime::from_utc(date, Utc);
+            let date: DateTime<Local> = chrono::DateTime::from(date);
+            let next_hit = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
+
+            let time = match chrono::NaiveTime::from_num_seconds_from_midnight_opt(timer.interval.as_secs() as u32, 0) {
+                Some(time) => time,
+                None => return Err(Status::internal(String::from("Could not convert next hit time"))),
+            };
+            let interval = format!("{:02}:{:02}:{:02}", time.hour(), time.minute(), time.second());
+
             let timer_item = Timer {
                 id: timer.id.clone(),
                 r#type: format!("{}", timer.r#type),
-                interval: format!("{:?}", timer.interval),
+                interval: interval,
                 command: timer.command.join(" "),
-                next_hit: format!("{:?}", tokio::time::Duration::from_secs(timer.next_hit)),
+                next_hit: next_hit,
                 days: timer.days.iter().collect(),
                 dynamic: timer.dynamic
             };
@@ -75,10 +91,16 @@ impl Chronos for ChronosGrpc {
         let mut ret_timers: Vec<Timer> = Vec::new();
 
         for timer in timers.iter() {
+            let time = match chrono::NaiveTime::from_num_seconds_from_midnight_opt(timer.interval.as_secs() as u32, 0) {
+                Some(time) => time,
+                None => return Err(Status::internal(String::from("Could not convert next hit time"))),
+            };
+            let interval = format!("{:02}:{:02}:{:02}", time.hour(), time.minute(), time.second());
+
             let timer_item = Timer {
                 id: timer.id.clone(),
                 r#type: format!("{}", timer.r#type),
-                interval: format!("{:?}", timer.interval),
+                interval: interval,
                 command: timer.command.join(" "),
                 next_hit: String::from("None"),
                 days: timer.days.iter().collect(),
@@ -123,10 +145,12 @@ impl Chronos for ChronosGrpc {
         let id = request.into_inner().id;
 
         let path = format!("{}/{}.conf", self.timer_dir, id);
-        let result = match crate::services::file::read_conf_file(path.as_str()) {
+        let mut result = match crate::services::file::read_conf_file(path.as_str()) {
             Ok(conf) => conf,
             Err(e) => return Err(Status::cancelled(format!("Failed to read timer config '{}': {}", path, e))),
         };
+
+        result.insert(String::from("id"), id.clone());
 
         let timer = match crate::structs::timer::Timer::from_config(result) {
             Ok(timer) => timer,
