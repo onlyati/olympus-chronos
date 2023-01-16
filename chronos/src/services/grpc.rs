@@ -181,10 +181,11 @@ impl Chronos for ChronosGrpc {
         timer_config.insert(String::from("command"), args.command);
         timer_config.insert(String::from("days"), args.days);
 
-        let timer = match crate::structs::timer::Timer::from_config(timer_config) {
+        let mut timer = match crate::structs::timer::Timer::from_config(timer_config) {
             Ok(timer) => timer,
             Err(e) => return Err(Status::cancelled(e)),
         };
+        timer.dynamic = true;
 
         let mut timers = TIMERS.lock().unwrap();
         if !timers.contains(&timer) {
