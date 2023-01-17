@@ -175,19 +175,25 @@ impl Timer {
             self.interval.as_secs() + secs_since_midnight
         };
 
+        verbose_println!("calculcate_next_day_diff_index: {}: Today next theoretically hit: {}", self.id, today_next_hit_theory);
+        verbose_println!("calculcate_next_day_diff_index: {}: Seconds since midnight: {}", self.id, secs_since_midnight);
+
         if self.r#type != TimerType::At && today_next_hit_theory <= 86400 && today_next_hit_theory > secs_since_midnight && self.days[today_index] == 'X' {
             return difference;
         }
 
-        if self.r#type == TimerType::At && today_next_hit_theory > now && self.days[today_index] == 'X' {
+        if self.r#type == TimerType::At && today_next_hit_theory > secs_since_midnight && self.days[today_index] == 'X' {
             return difference;
         }
 
         // Timer cannot be schedule today, so find next good day
-        let next_index = today_index + 1 % self.days.len() - 1;
+        let next_index = today_index + 1 % (self.days.len() - 1);
+        difference += 1;
+        verbose_println!("calculcate_next_day_diff_index: {}: Check available day from: {}", self.id, next_index);
         
 
         for i in next_index..self.days.len() {
+            verbose_println!("Checking [{}] -> {}; Current difference: {}", i, self.days[i], difference);
             if self.days[i] == 'X' {
                 return difference;
             }
@@ -195,12 +201,14 @@ impl Timer {
         }
 
         for i in 0..next_index {
+            verbose_println!("Checking [{}] -> {}; Current difference: {}", i, self.days[i], difference);
             if self.days[i] == 'X' {
                 return difference;
             }
             difference += 1;
         }
 
+        verbose_println!("calculcate_next_day_diff_index: {}: difference until next day: {}", self.id, difference);
         return difference;
     }
 
