@@ -20,7 +20,7 @@ Timer can be scheduled on two ways:
 
 Chronos has a CLI too, this help explain what can be done via this:
 ```
-Usage: cli [OPTIONS] --hostname <HOSTNAME> <COMMAND>
+Usage: chronos-cli [OPTIONS] --hostname <HOSTNAME> <COMMAND>
 
 Commands:
   verbose-log-on   Turn on verbose log

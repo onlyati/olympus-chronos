@@ -175,7 +175,11 @@ impl Timer {
             self.interval.as_secs() + secs_since_midnight
         };
 
-        if today_next_hit_theory <= 86400 && today_next_hit_theory > secs_since_midnight && self.days[today_index] == 'X' {
+        if self.r#type != TimerType::At && today_next_hit_theory <= 86400 && today_next_hit_theory > secs_since_midnight && self.days[today_index] == 'X' {
+            return difference;
+        }
+
+        if self.r#type == TimerType::At && today_next_hit_theory > now && self.days[today_index] == 'X' {
             return difference;
         }
 
