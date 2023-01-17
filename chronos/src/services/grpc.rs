@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc, Local, Datelike, Timelike};
+use chrono::{DateTime, Utc, Local, Datelike, Timelike, TimeZone, NaiveDate, Duration};
 
 use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{transport::Server, Request, Response, Status};
@@ -15,6 +15,7 @@ mod chronos {
 
 use crate::VERBOSE;
 use crate::TIMERS;
+use crate::enums::timer_types::TimerType;
 
 #[derive(Debug, Default)]
 struct ChronosGrpc {
@@ -49,13 +50,17 @@ impl Chronos for ChronosGrpc {
                 None => return Err(Status::internal(String::from("Could not convert next hit time"))),
             };
             let date: DateTime<Utc> = chrono::DateTime::from_utc(date, Utc);
-            let date: DateTime<Local> = chrono::DateTime::from(date);
-            let next_hit = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
+            let mut next_hit = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
+            if timer.r#type != TimerType::At {
+                let date: DateTime<Local> = chrono::DateTime::from(date);
+                next_hit = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
+            }
 
             let time = match chrono::NaiveTime::from_num_seconds_from_midnight_opt(timer.interval.as_secs() as u32, 0) {
                 Some(time) => time,
                 None => return Err(Status::internal(String::from("Could not convert next hit time"))),
             };
+            
             let interval = format!("{:02}:{:02}:{:02}", time.hour(), time.minute(), time.second());
 
             let timer_item = Timer {
