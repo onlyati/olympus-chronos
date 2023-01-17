@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+option csharp_namespace = "HermesGrpc";
+
+package hermes;
+
+service Hermes {
+    rpc Set (SetPair) returns (Pair);
+    rpc Get (Key) returns (Pair);
+    rpc Delete (Key) returns (Pair);
+    rpc Mask (Key) returns (KeyList);
+    rpc CreateTable (TableName) returns (Table);
+    rpc DropTable (TableName) returns (Table);
+    rpc ListTables (Empty) returns (TableList);
+}
+
+message SetPair {
+    string key = 1;
+    string value = 2;
+    string table = 3;
+}
+
+message Key {
+    string key = 1;
+    string table = 2;
+}
+
+message TableName {
+    string name = 1;
+}
+
+message Empty {}
+
+message Pair {
+    string key = 1;
+    string value = 2;
+    string table = 3;
+}
+
+message KeyList {
+    repeated string keys = 1;
+}
+
+message Table {
+    string name = 1;
+}
+
+message TableList {
+    repeated string tables = 1;
+}

@@ -6,4 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-onlyati_config = { git = "https://gitlab.atihome.lan/rust-libs/onlyati-config", tag = "latest" }
+onlyati_config = { git = "https://github.com/onlyati/config-rs", tag = "latest" }
+tonic = { version = "0.8.3", features = ["tls"] }
+prost = "0.11"
+tokio = { version = "1.24.1", features = ["macros", "rt-multi-thread", "fs"] }
+clap = { version = "4.0.32", features = ["derive"] }
+
+[build-dependencies]
+tonic-build = "0.8"

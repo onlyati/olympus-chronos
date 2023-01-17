@@ -1,153 +1,253 @@
-use std::os::unix::net::UnixStream;
-use std::io::prelude::*;
+use clap::Parser;
+use tonic::transport::{Channel, Certificate, ClientTlsConfig};
+use tonic::{Request, Response, Status};
 use std::process::exit;
-use std::env;
-use std::path::Path;
-use std::collections::HashMap;
+
+use chronos::chronos_client::{ChronosClient};
+use chronos::{Empty, TimerList, TimerIdArg, TimerArg};
+
+mod chronos {
+    tonic::include_proto!("chronos");
+}
+
+mod arg;
+use arg::{Args, Action};
 
 fn main() {
-    /*-------------------------------------------------------------------------------------------*/
-    /* Read all parameter then parse them to words                                               */
-    /*-------------------------------------------------------------------------------------------*/
-    let args: Vec<String> = env::args().collect();
-    let args = args.join(" ");
-    let mut args: Vec<&str> = args.split_whitespace().collect();
-
-    args.remove(0);
-
-    let defaults = get_defaults();
-
-    /*-------------------------------------------------------------------------------------------*/
-    /* Parse the input and upload the Argument struct with those values                          */
-    /*-------------------------------------------------------------------------------------------*/
-    let mut input: Argument = Argument { address: None, command: None, verbose: false };
-
-    for i in 0..args.len() {
-        if args[i] == "-h" || args[i] == "--help" {
-            // It is the help of CLI, show it then exit
-            display_help();
-            exit(0);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async move {
+        match main_asnyc().await {
+            Ok(rc) => exit(rc),
+            Err(_) => exit(-999),
         }
+    });
+}
 
-        if args[i] == "--version" {
-            println!("v0.1.2");
-            exit(0);
-        }
+async fn main_asnyc() -> Result<i32, Box<dyn std::error::Error>> {
+    let args = Args::parse();
 
-        if i > 0 {
-            if args[i - 1] == "-a" {
-                input.address = Some(String::from(args[i]));
-                continue;
-            }
-        }
+    // Measure runtime of script
+    let start = std::time::Instant::now();
 
-        if args[i] == "-a" {
-            // Address must be followed after "-a", no extra to do just check the next word for address
-            continue;
-        }
+    // Try to create and connect to gRPC server
+    let grpc_channel = create_grpc_channel(args.clone()).await;
 
-        if args[i] == "-v" {
-            // We want to display more things
-            input.verbose = true;
-            continue;
-        }
+    let mut grpc_client = ChronosClient::new(grpc_channel);
 
-        // At this point, it is the COMMAND part of argument
-        if let None = &mut input.command {
-            input.command = Some(String::from(args[i]));
-            continue;
-        }
-        if let Some(cmd) = &mut input.command {
-            cmd.push(' ');
-            cmd.push_str(args[i]);
-        }
-    }
+    let mut final_rc = 0;
 
-    if let None = input.address {
-        input.address = match defaults.get("address") {
-            Some(addr) => Some(addr.clone()),
-            None => None,
-        };
-    }
-
-    if input.verbose {
-        println!("#Address: >{:?}<", input.address);
-        println!("#Command: >{:?}<", input.command);
-    }
-
-    let message = match input.command {
-        Some(cmd) => {
-            format!("{} {}", cmd.len(), cmd)
-        },
-        None => {
-            println!(">Error\nCommand must be specified");
-            exit(1);
-        }
-    };
-
-    if input.verbose {
-        println!("#Message to Chronos: >{}<", message);
-    }
-
-    let mut stream = match input.address {
-        Some(addr) => {
-            match UnixStream::connect(Path::new(&addr)) {
-                Ok(v) => v,
+    match args.action {
+        Action::Create { ref id, ref r#type, ref interval, ref command, ref days } => {
+            let parms = TimerArg {
+                id: id.clone(),
+                r#type: r#type.clone(),
+                interval: interval.clone(),
+                command: command.clone(),
+                days: days.clone(),
+            };
+            let response: Result<Response<Empty>, Status> = grpc_client.create_timer(Request::new(parms)).await;
+            match response {
+                Ok(_) => {
+                    println!("Timer is created!");
+                }
                 Err(e) => {
-                    println!(">Error\nError during connect to socket: {e:?}");
-                    exit(1);        
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
                 }
             }
         },
-        None => {
-            println!(">Error\nAddress field is not specified");
-            exit(1);
+        Action::ListActive => {
+            let response: Result<Response<TimerList>, Status> = grpc_client.list_active_timers(Request::new(Empty { })).await;
+            match response {
+                Ok(resp) => {
+                    let timers = resp.into_inner();
+                    let mut timers = timers.timers;
+                    timers.sort_by(|a, b| a.next_hit.cmp(&b.next_hit));
+
+                    let mut width_id = 2;
+                    let mut width_command = 7;
+
+                    for timer in &timers {
+                        if timer.id.len() > width_id {
+                            width_id = timer.id.len();
+                        }
+                        if timer.command.len() > width_command {
+                            width_command = timer.command.len();
+                        }
+                    }
+
+                    println!("{:^w_id$} | {:^7} | {:^8} | {:^19} | {:^7} | {:^1} | {:<w_cmd$}", "ID", "Type", "Period", "Next run", "Days", "D", "Command", w_id = width_id, w_cmd = width_command);
+                    println!("{:-<w_id$} + {:-<7} + {:-<8} + {:-<19} + {:-<7} + {:-<1} + {:-<w_cmd$}", "", "", "", "", "", "", "", w_id = width_id, w_cmd = width_command);
+
+                    for timer in timers {
+                        let r#dyn = if timer.dynamic { "Y" } else { "N" };
+                        println!("{:w_id$} | {:7} | {:8} | {:19} | {:7} | {:1} | {:w_cmd$}", timer.id, timer.r#type, timer.interval, timer.next_hit, timer.days, r#dyn, timer.command, w_id = width_id, w_cmd = width_command);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
+                }
+            }
+        }
+        Action::ListStatic => {
+            let response: Result<Response<TimerList>, Status> = grpc_client.list_timer_configs(Request::new(Empty { })).await;
+            match response {
+                Ok(resp) => {
+                    let timers = resp.into_inner();
+                    let timers = timers.timers;
+
+                    let mut width_id = 2;
+                    let mut width_command = 7;
+
+                    for timer in &timers {
+                        if timer.id.len() > width_id {
+                            width_id = timer.id.len();
+                        }
+                        if timer.command.len() > width_command {
+                            width_command = timer.command.len();
+                        }
+                    }
+
+                    println!("{:^w_id$} | {:^7} | {:^8} | {:^7} | {:^1} | {:<w_cmd$}", "ID", "Type", "Period", "Days", "D", "Command", w_id = width_id, w_cmd = width_command);
+                    println!("{:-<w_id$} + {:-<7} + {:-<8} + {:-<7} + {:-<1} + {:-<w_cmd$}", "", "", "", "", "", "", w_id = width_id, w_cmd = width_command);
+
+                    for timer in timers {
+                        let r#dyn = if timer.dynamic { "Y" } else { "N" };
+                        println!("{:w_id$} | {:7} | {:8} | {:7} | {:1} | {:w_cmd$}", timer.id, timer.r#type, timer.interval, timer.days, r#dyn, timer.command, w_id = width_id, w_cmd = width_command);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
+                }
+            }
+        }
+        Action::Purge { ref id } => {
+            let response: Result<Response<Empty>, Status> = grpc_client.purge_timer(Request::new(TimerIdArg { id: id.clone() })).await;
+            match response {
+                Ok(_) => {
+                    println!("Timer is purged");
+                }
+                Err(e) => {
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
+                }
+            }
+        }
+        Action::Refresh { ref id } => {
+            let response: Result<Response<Empty>, Status> = grpc_client.refresh_timer(Request::new(TimerIdArg { id: id.clone() })).await;
+            match response {
+                Ok(_) => {
+                    println!("Timer refreshed");
+                }
+                Err(e) => {
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
+                }
+            }
+        }
+        Action::VerboseLogOff => {
+            let response: Result<Response<Empty>, Status> = grpc_client.verbose_log_off(Request::new(Empty {})).await;
+            match response {
+                Ok(_) => println!("Log verbose is off"),
+                Err(e) => {
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
+                }
+            }
+        }
+        Action::VerboseLogOn => {
+            let response: Result<Response<Empty>, Status> = grpc_client.verbose_log_on(Request::new(Empty {})).await;
+            match response {
+                Ok(_) => println!("Log verbose is on"),
+                Err(e) => {
+                    eprintln!("Failed request: {}", e.message());
+                    final_rc = 4;
+                }
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    print_verbose(&args, format!("Measured runtime: {:?}", elapsed));
+
+    return Ok(final_rc);
+}
+
+/// Print text only, when verbose flag is set
+fn print_verbose<T: std::fmt::Display>(args: &Args, text: T) {
+    if args.verbose {
+        println!("> {}", text);
+    }
+}
+
+/// Create a new gRPC channel which connection to Hephaestus
+async fn create_grpc_channel(args: Args) -> Channel {
+    if !args.hostname.starts_with("cfg://") {
+        print_verbose(&args, "Not cfg:// protocol is given");
+        return Channel::from_shared(args.hostname.clone())
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+    }
+
+    let host = args.hostname[6..].to_string();
+
+    print_verbose(&args, format!("cfg:// is specified, will be looking for in {} for {} settings", host, args.config));
+
+    let config = match onlyati_config::read_config(&args.config[..]) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to read config: {}", e);
+            std::process::exit(2);
         }
     };
 
-    let now = std::time::Instant::now();
-    stream.write(message.as_bytes()).unwrap();
-    
-    let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    let elapsed = now.elapsed();
-    println!("{response}");
-
-    if input.verbose{
-        println!("#Elapsed time: {:?}", elapsed);
-    }
-
-    if response.lines().next().unwrap() != ">Done" {
-        exit(10);
-    }
-}
-
-fn get_defaults() -> HashMap<String, String> {
-    let config = match onlyati_config::read_config("/etc/olympus/chronos/defaults") {
-        Ok(conf) => conf,
-        Err(_) => HashMap::new(),
+    let addr = match config.get(&format!("node.{}.address", host)) {
+        Some(a) => a.clone(),
+        None => {
+            eprintln!("No address is found for '{}' in config", host);
+            std::process::exit(2);
+        }
     };
 
-    return config;
-}
+    let ca = config.get(&format!("node.{}.ca_cert", host));
+    let domain = config.get(&format!("node.{}.domain", host));
 
-struct Argument {
-    address: Option<String>,
-    command: Option<String>,
-    verbose: bool,
-}
+    print_verbose(&args, format!("{:?}, {:?}", ca, domain));
 
-fn display_help() {
-    println!("Syntax of command:");
-    println!("");
-    println!("   chronos-cli [-v] -a <address> COMMAND");
-    println!("");
-    println!("   -v");
-    println!("      Verbose switch. If this is put in the command then more details is written.");
-    println!("");
-    println!("   -a <address>");
-    println!("      UNIX domain socker for Chronos server.");
-    println!("");
-    println!("   COMMAND");
-    println!("      Hermes command what you want to execute. Execute 'help' Hermes command to display them.");
+    if ca.is_some() && domain.is_some() {
+        let pem = match tokio::fs::read(ca.unwrap()).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to read {}: {}", ca.unwrap(), e);
+                std::process::exit(2);
+            }
+        };
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new()
+            .ca_certificate(ca)
+            .domain_name(domain.unwrap());
+        
+        return Channel::from_shared(addr)
+            .unwrap()
+            .tls_config(tls)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+    }
+    else {
+        return Channel::from_shared(addr)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+    }
 }

@@ -1,51 +1,40 @@
 # Chronos@Olympus
 
-Chronos is a timer module in Olympus application package. Task of Chronos are the following: execute timed actions based on timer rules.
-Similar like `cron` but with more flexibility.
+## :earth_africa: What is Olympus?
 
-## Current abilities
+Olympus is name of my package which is intended to supervise a Linux server environment and provide its applications and services a stable backend. Olympus consist of:
+- **Zeus:** Responsible to run defined applications on proper server machines
+- **Hermes:** Act like an in-memory database and a message queue for other Olympus applications
+- **Chronos:** Execute commands by timely manner
+- **Hephaestus:** Run long and complex tasks in the background as jobs
+- **Apollo:** Center of documentation, stores every information and thresholds for monitoring scripts
+- **Argos:** Collecting and analyzing data and forward it to Athena
+- **Athena:** Automation of Olympus, it analyzes what other component does and act according to its rules
 
-Chronos is able to do the following activities:
-- Tasks can be created by using files (see in `sample/all_timers`)
-- Timer tasks can be activated automatically after Chronos tart (having symlink in `startup_timers`) or activating via CLI
-- Timer tasks can be executed by any operator which is defined in task
-- There are 3 different timer type:
-  - Every: Running every specified interval
-  - At: Running once a day in the specified time
-  - Oneshot: Running once after activation when interval has passed
+## :alarm_clock: Structure Chronos
 
-## Plans for the future
+Chronos is a timer module. It is made to execute commands, with short execution time, at timely manner.
+Timer can be scheduled on two ways:
+- Static timers: This is created from timer directory's file. This is scheduled automatically during Chronos startup.
+- Dynamic timers: This is created by request. Chronos hosting a gRPC interface and it has an endpoint to create and schedule dynmic timer
 
-Following functions are planned for the future:
-- Support weekday attribute in timer task file
-- Implement cluster feature
-
-## Installation
-
-It is really just a hobby project and in a **very early stage**, but if you would like to try it, you can do by the following steps.
-
-1. Clone the repository
-2. Copy `olmypus.chronos.service` file into `/lib/systemd/system` directory (or anywhere where you like to prefer systemd service files)
-3. Refresh systemd: `systemctl daemon-reload`
-4. Be assumed that `/usr/share/olympus/chronos` and `/etc/olympus/chronos` exists
-5. Create a new group, called `olympus` and assign yourself for it
-6. In a terminal, navigate to the cloned repository's directory and execute `make publish` command
-7. Create a symlink for `/usr/share/olympus/chronos/cli` in `/usr/local/bin` with `chronos-cli` name: `cd /usr/local/bin/ && sudo ln -s /usr/share/olympus/chronos/cli chronos-cli`
-
-## Usage
-By checking `chronos-cli` help, you can see what you can do:
-
+Chronos has a CLI too, this help explain what can be done via this:
 ```
-❯ chronos-cli help
-Possible Chronos commands:
-List active timers:                  list active
-List started timers:                 list startup
-List details of started timers:      list startup expanded
-List all timer config:               list all
-List details of all timer config:    list all expanded
-Purge timer:                         purge <timer-id>
-Add timer:                           add <timer-id>
-Enable startup timer:                startup enable <timer-id>
-Disable startup timer:               startup disable <timer-id>
-```
+Usage: cli [OPTIONS] --hostname <HOSTNAME> <COMMAND>
 
+Commands:
+  verbose-log-on   Turn on verbose log
+  verbose-log-off  Turn off verbose log
+  list-active      List currently active timers
+  list-static      List static timers
+  purge            Purge active timer
+  create           Create dynamic timer
+  refresh          Refresh static timer
+  help             Print this message or the help of the given subcommand(s)
+
+Options:
+  -H, --hostname <HOSTNAME>  Specifiy the host name or config pointer, for example: http://example.com or cfg://example
+  -c, --config <CONFIG>      If cfg:// specified at hostname, then this is where the config is read [default: /etc/olympus/chronos/client.conf]
+  -v, --verbose              Show more detail about connection
+  -h, --help                 Print help
+```
