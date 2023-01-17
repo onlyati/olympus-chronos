@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug, Clone)]
-#[command(author, version, about, long_about)]
-#[command(propagate_version = true)]
+#[command(author, about, long_about)]
 pub struct Args {
     /// Specifiy the action what to do
     #[command(subcommand)]
