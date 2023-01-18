@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::io::BufReader;
 
-use chrono::{Datelike, NaiveTime, Timelike};
+use chrono::{Datelike, NaiveTime, Timelike, Local};
 use tokio::time::Duration;
 
 use crate::enums::timer_types::TimerType;
@@ -132,11 +132,19 @@ impl Timer {
         verbose_println!("calculate_next_hit: {}: Last midnight: {}", self.id, last_midnight);
         verbose_println!("calculate_next_hit: {}: Interval ins seconds: {}", self.id, interval);
 
+        let tz_diff = Local::now().offset().utc_minus_local();
+
+
         if self.r#type == TimerType::At {
             let days_until_next = self.calculate_next_day_diff_index();
             verbose_println!("calculate_next_hit: {}: Days until next run: {}", self.id, days_until_next);
 
-            self.next_hit = interval + last_midnight + days_until_next * 86400;
+            if tz_diff < 0 {
+                self.next_hit = interval + last_midnight + days_until_next * 86400 - tz_diff.abs() as u64;
+            }
+            else {
+                self.next_hit = interval + last_midnight + days_until_next * 86400 + tz_diff.abs() as u64;
+            }
             verbose_println!("calculate_next_hit: {}: Next hit: {}", self.id, self.next_hit);
         }
         else {
@@ -147,7 +155,12 @@ impl Timer {
                 self.next_hit = interval + now;
             }
             else {
-                self.next_hit = interval + last_midnight + days_until_next * 86400;
+                if tz_diff < 0 {
+                    self.next_hit = interval + last_midnight + days_until_next * 86400 - tz_diff.abs() as u64;
+                }
+                else {
+                    self.next_hit = interval + last_midnight + days_until_next * 86400 + tz_diff.abs() as u64;
+                }
             }
             verbose_println!("calculate_next_hit: {}: Next hit: {}", self.id, self.next_hit);
         }
