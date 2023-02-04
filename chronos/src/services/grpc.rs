@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc, Local, Datelike, Timelike, TimeZone, NaiveDate, Duration};
+use chrono::{DateTime, Utc, Local, Datelike, Timelike};
 
 use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{transport::Server, Request, Response, Status};
@@ -57,8 +57,13 @@ impl Chronos for ChronosGrpc {
                 Some(time) => time,
                 None => return Err(Status::internal(String::from("Could not convert next hit time"))),
             };
-            
-            let interval = format!("{:02}:{:02}:{:02}", time.hour(), time.minute(), time.second());
+
+            let interval = if timer.r#type == TimerType::At {
+                String::from("N/A")
+            }
+            else {
+                format!("{:02}:{:02}:{:02}", time.hour(), time.minute(), time.second())
+            };
 
             let timer_item = Timer {
                 id: timer.id.clone(),

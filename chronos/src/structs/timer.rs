@@ -126,25 +126,23 @@ impl Timer {
             Err(e) => panic!("Failed for calculate time since UNIX_EPICH: {}", e),
         };
         verbose_println!("calculate_next_hit: {}: Time now: {}", self.id, now);
+        let tz_diff = Local::now().offset().utc_minus_local();
 
-        let last_midnight = now - now % 86400;
+        let last_midnight = if tz_diff < 0 {
+            now - now % 86400 - tz_diff.abs() as u64
+        }
+        else {
+            now - now % 86400 + tz_diff.abs() as u64
+        };
         let interval = self.interval.as_secs();
         verbose_println!("calculate_next_hit: {}: Last midnight: {}", self.id, last_midnight);
         verbose_println!("calculate_next_hit: {}: Interval ins seconds: {}", self.id, interval);
-
-        let tz_diff = Local::now().offset().utc_minus_local();
-
 
         if self.r#type == TimerType::At {
             let days_until_next = self.calculate_next_day_diff_index();
             verbose_println!("calculate_next_hit: {}: Days until next run: {}", self.id, days_until_next);
 
-            if tz_diff < 0 {
-                self.next_hit = interval + last_midnight + days_until_next * 86400 - tz_diff.abs() as u64;
-            }
-            else {
-                self.next_hit = interval + last_midnight + days_until_next * 86400 + tz_diff.abs() as u64;
-            }
+            self.next_hit = interval + last_midnight + days_until_next * 86400;
             verbose_println!("calculate_next_hit: {}: Next hit: {}", self.id, self.next_hit);
         }
         else {
@@ -155,12 +153,7 @@ impl Timer {
                 self.next_hit = interval + now;
             }
             else {
-                if tz_diff < 0 {
-                    self.next_hit = interval + last_midnight + days_until_next * 86400 - tz_diff.abs() as u64;
-                }
-                else {
-                    self.next_hit = interval + last_midnight + days_until_next * 86400 + tz_diff.abs() as u64;
-                }
+                self.next_hit = interval + last_midnight + days_until_next * 86400
             }
             verbose_println!("calculate_next_hit: {}: Next hit: {}", self.id, self.next_hit);
         }
@@ -178,7 +171,15 @@ impl Timer {
             Err(e) => panic!("Failed for calculate time since UNIX_EPICH: {}", e),
         };
 
-        let secs_since_midnight = now % 86400;
+        // let secs_since_midnight = now % 86400;
+        let tz_diff = Local::now().offset().utc_minus_local();
+
+        let secs_since_midnight = if tz_diff < 0 {
+            now % 86400 + tz_diff.abs() as u64
+        }
+        else {
+            now % 86400 - tz_diff.abs() as u64
+        };
 
         // Check that timer can be scheduled today
         let today_next_hit_theory = if self.r#type == TimerType::At {
